@@ -99,34 +99,118 @@ def validate_schema(df: pd.DataFrame) -> Tuple[bool, List[str]]:
 def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     """
     Normalize DataFrame to match unified schema.
+    Maps collector field names to target schema field names.
     
     Args:
-        df: Input DataFrame
+        df: Input DataFrame with collector schema
         
     Returns:
-        Normalized DataFrame
+        Normalized DataFrame with target schema
     """
-    # Ensure all schema columns exist
+    # Create a copy to avoid modifying the original
+    df = df.copy()
+    
+    # Field mapping from collector schema to target schema
+    field_mapping = {
+        'source_reference': 'ref_no',
+        'notification_date': 'date_registered',
+        'product_category': 'product_type_raw',
+        'origin_country': 'origin_raw',
+        'destination_country': 'notifying_country_raw',
+    }
+    
+    # Apply field mapping
+    for old_name, new_name in field_mapping.items():
+        if old_name in df.columns:
+            df[new_name] = df[old_name]
+    
+    # Map hazard_category to hazard_reason if not already set
+    if 'hazard_reason' not in df.columns and 'hazard_category' in df.columns:
+        df['hazard_reason'] = df['hazard_category']
+    
+    # Categorize hazard into standard categories (미생물, 화학물질, etc.)
+    # This would normally use more sophisticated logic or a lookup table
+    if 'hazard_category' in df.columns:
+        # Keep the original hazard_category but standardize format
+        df['hazard_category'] = df['hazard_category'].apply(_standardize_hazard_category)
+    
+    # Set default values for missing required fields
+    if 'id' not in df.columns:
+        df['id'] = None  # Will be set during deduplication
+    
+    if 'product_type' not in df.columns:
+        # Standardized product type - would normally use translation dict
+        df['product_type'] = df.get('product_type_raw', None)
+    
+    if 'category' not in df.columns:
+        df['category'] = '식품'  # Default to 'food' in Korean
+    
+    if 'origin' not in df.columns:
+        # Standardized origin - would normally use translation dict
+        df['origin'] = df.get('origin_raw', None)
+    
+    if 'notifying_country' not in df.columns:
+        # Standardized notifying country - would normally use translation dict
+        df['notifying_country'] = df.get('notifying_country_raw', None)
+    
+    if 'analyzable' not in df.columns:
+        df['analyzable'] = True  # Default to True
+    
+    if 'tags' not in df.columns:
+        df['tags'] = [[] for _ in range(len(df))]  # Empty list for tags
+    
+    # Ensure all schema columns exist with defaults
     for col in UNIFIED_SCHEMA.keys():
         if col not in df.columns:
             if col == 'tags':
-                df[col] = [[] for _ in range(len(df))]  # Empty list for tags
+                df[col] = [[] for _ in range(len(df))]
             elif col == 'analyzable':
-                df[col] = True  # Default to True
+                df[col] = True
+            elif col == 'hazard_category':
+                df[col] = '미상'  # Default to 'unknown' in Korean
             else:
                 df[col] = None
     
     # Convert data types
     for col, dtype in UNIFIED_SCHEMA.items():
-        if dtype == 'string':
-            df[col] = df[col].astype('string')
-        elif dtype.startswith('datetime'):
-            df[col] = pd.to_datetime(df[col], errors='coerce')
-        elif dtype == 'bool':
-            df[col] = df[col].astype('bool')
-        elif dtype == 'object':
-            # Keep as object (for lists, etc.)
-            pass
+        if col in df.columns:
+            if dtype == 'string':
+                df[col] = df[col].astype('string')
+            elif dtype.startswith('datetime'):
+                df[col] = pd.to_datetime(df[col], errors='coerce')
+            elif dtype == 'bool':
+                df[col] = df[col].astype('bool')
+            elif dtype == 'object':
+                # Keep as object (for lists, etc.)
+                pass
     
-    # Reorder columns to match schema
+    # Reorder columns to match schema and drop extra columns
     return df[list(UNIFIED_SCHEMA.keys())]
+
+
+def _standardize_hazard_category(hazard: str) -> str:
+    """
+    Standardize hazard category to Korean categories.
+    
+    Args:
+        hazard: Raw hazard description
+        
+    Returns:
+        Standardized hazard category
+    """
+    if not hazard or pd.isna(hazard):
+        return '미상'  # Unknown
+    
+    hazard_lower = str(hazard).lower()
+    
+    # Map to Korean categories
+    if any(term in hazard_lower for term in ['microb', 'bacteria', 'salmonella', 'listeria', 'e. coli', 'e.coli']):
+        return '미생물'  # Microbiological
+    elif any(term in hazard_lower for term in ['chemical', 'pesticide', 'heavy metal', 'toxin']):
+        return '화학물질'  # Chemical
+    elif any(term in hazard_lower for term in ['allergen', 'allergy']):
+        return '알레르기'  # Allergen
+    elif any(term in hazard_lower for term in ['foreign', '物體', 'object']):
+        return '이물질'  # Foreign matter
+    else:
+        return '기타'  # Other

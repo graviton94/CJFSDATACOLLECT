@@ -16,24 +16,29 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from schema import validate_data, normalize_dataframe
 
 
-def save_to_parquet(df: pd.DataFrame, path: Union[str, Path]) -> Path:
+def save_to_parquet(df: pd.DataFrame, data_dir: Union[str, Path], source: str = None) -> Path:
     """
     Save DataFrame to Parquet file with schema validation and append support.
     
     Args:
         df: DataFrame to save
-        path: Path to Parquet file (supports appending to existing file)
+        data_dir: Directory path or full file path to Parquet file
+        source: Optional source name for logging (not used for file naming)
         
     Returns:
         Path to saved file
     """
+    # If data_dir is a file path (ends with .parquet), use it directly
+    # Otherwise, assume it's a directory and use hub_data.parquet
+    path_obj = Path(data_dir)
+    if path_obj.suffix != '.parquet':
+        path_obj = path_obj / 'hub_data.parquet'
+    
     # Validate schema before saving
     is_valid, errors = validate_data(df)
     if not is_valid:
         logger.error(f"Schema validation failed: {errors}")
         raise ValueError(f"Schema validation failed: {errors}")
-    
-    path_obj = Path(path)
     
     # Ensure parent directory exists
     path_obj.parent.mkdir(parents=True, exist_ok=True)
