@@ -111,3 +111,20 @@ def filter_duplicates(df: pd.DataFrame, path: Union[str, Path]) -> pd.DataFrame:
     """
     existing_keys = load_existing_keys(path)
     return deduplicate_records(df, existing_keys)
+
+
+def merge_and_deduplicate(df: pd.DataFrame, data_dir: Union[str, Path]) -> pd.DataFrame:
+    """
+    Merge new data with existing data and remove duplicates.
+    Convenience wrapper for filter_duplicates.
+    
+    Args:
+        df: New DataFrame to merge
+        data_dir: Directory containing hub_data.parquet file
+        
+    Returns:
+        Deduplicated DataFrame containing only new records
+    """
+    data_dir = Path(data_dir)
+    parquet_path = data_dir / 'hub_data.parquet'
+    return filter_duplicates(df, parquet_path)

@@ -31,7 +31,7 @@ class MFDSCollector:
             api_key: MFDS Open API key (can also be set via MFDS_API_KEY env var)
             data_dir: Directory for storing processed data
         """
-        self.source = "KR_MFDS"
+        self.source = "MFDS"
         self.data_dir = data_dir or Path("data/processed")
         self.api_key = api_key or os.getenv('MFDS_API_KEY')
         self.base_url = "https://openapi.foodsafetykorea.go.kr/api"
@@ -67,72 +67,158 @@ class MFDSCollector:
     def _call_api(self, days_back: int) -> list:
         """
         Call MFDS Open API to retrieve data.
+        Implements actual API calls for I0030 (Risk Information) and I2710 (Overseas Blocked Food).
         
         Args:
             days_back: Number of days to look back
             
         Returns:
-            List of records
+            List of records from all endpoints
         """
         records = []
         
-        try:
-            # Example endpoint - actual endpoint would need to be configured
-            # Common MFDS endpoints include:
-            # - I2570: Food recall information
-            # - I0488: Import food violations
-            endpoint = "I2570"  # Food recall example
-            
-            url = f"{self.base_url}/{self.api_key}/{endpoint}/json/1/100"
-            
-            response = requests.get(url, timeout=30)
-            response.raise_for_status()
-            
-            data = response.json()
-            
-            # Parse API response (format depends on specific endpoint)
-            # This is a simplified example
-            if endpoint in data:
-                items = data.get(endpoint, {}).get('row', [])
-                records = self._parse_api_response(items)
-            
-            logger.info(f"Retrieved {len(records)} records from MFDS API")
-            
-        except requests.RequestException as e:
-            logger.error(f"Error calling MFDS API: {e}")
-        except Exception as e:
-            logger.error(f"Error parsing MFDS response: {e}")
+        # Endpoints to query:
+        # I0030: Risk Information Service
+        # I2710: Overseas Blocked Food Import Information
+        endpoints = ['I0030', 'I2710']
+        
+        for endpoint in endpoints:
+            try:
+                # MFDS API supports pagination
+                page_size = 100
+                start_idx = 1
+                
+                while True:
+                    end_idx = start_idx + page_size - 1
+                    
+                    # Build API URL
+                    # Format: {base_url}/{api_key}/{endpoint}/{data_type}/{start_idx}/{end_idx}
+                    url = f"{self.base_url}/{self.api_key}/{endpoint}/json/{start_idx}/{end_idx}"
+                    
+                    logger.info(f"Calling MFDS API: {endpoint} (rows {start_idx}-{end_idx})")
+                    
+                    response = requests.get(url, timeout=30)
+                    response.raise_for_status()
+                    
+                    data = response.json()
+                    
+                    # Check for API errors
+                    # MFDS returns error structure like: {endpoint: {RESULT: {CODE: "ERROR-xxx"}}}
+                    if endpoint in data:
+                        result = data[endpoint].get('RESULT', {})
+                        if result.get('CODE') and 'ERROR' in result.get('CODE', ''):
+                            logger.warning(f"MFDS API returned error for {endpoint}: {result.get('MSG', 'Unknown error')}")
+                            break
+                        
+                        # Get data rows
+                        items = data[endpoint].get('row', [])
+                        
+                        if not items:
+                            logger.info(f"No more data from {endpoint}")
+                            break
+                        
+                        # Parse response
+                        parsed_records = self._parse_api_response(items, endpoint)
+                        records.extend(parsed_records)
+                        
+                        logger.info(f"Retrieved {len(parsed_records)} records from {endpoint} (page {start_idx}-{end_idx})")
+                        
+                        # Check if we got less than page_size, indicating last page
+                        if len(items) < page_size:
+                            break
+                        
+                        # Move to next page
+                        start_idx = end_idx + 1
+                    else:
+                        logger.warning(f"Unexpected response structure from {endpoint}")
+                        break
+                
+            except requests.RequestException as e:
+                logger.error(f"Error calling MFDS API endpoint {endpoint}: {e}")
+            except Exception as e:
+                logger.error(f"Error parsing MFDS response for {endpoint}: {e}")
         
         return records
     
-    def _parse_api_response(self, items: list) -> list:
-        """Parse API response items into standardized format."""
+    def _parse_api_response(self, items: list, endpoint: str) -> list:
+        """
+        Parse API response items into standardized format.
+        
+        Args:
+            items: List of items from API response
+            endpoint: API endpoint identifier (I0030 or I2710)
+            
+        Returns:
+            List of parsed records
+        """
         records = []
         
         for item in items:
             try:
-                # Map API fields to our schema
-                # Field names would depend on actual MFDS API response
-                record = {
-                    'source': self.source,
-                    'source_reference': item.get('RECALL_NO', 'UNKNOWN'),
-                    'notification_date': self._parse_date(item.get('RECALL_DATE')),
-                    'ingestion_date': datetime.now(),
-                    'product_name': item.get('PRDLST_NM', 'Unknown Product'),
-                    'product_category': item.get('PRDLST_TYPE', None),
-                    'origin_country': 'South Korea',
-                    'destination_country': 'South Korea',
-                    'hazard_category': item.get('VIOL_CONT', 'Unknown Hazard'),
-                    'hazard_substance': None,
-                    'risk_decision': 'recall',
-                    'risk_level': self._determine_risk_level(item),
-                    'action_taken': item.get('TAKE_STEP', None),
-                    'description': item.get('DETAIL', None),
-                    'data_quality_score': 0.92,
-                }
+                # Field mapping varies by endpoint
+                if endpoint == 'I0030':
+                    # I0030: Risk Information Service
+                    # Maps fields like PRDUCT (product), PRDLST_NM (product name), etc.
+                    record = {
+                        'source': self.source,
+                        'source_reference': item.get('PRDLST_REPORT_NO', item.get('PRDLST_CD', 'UNKNOWN')),
+                        'notification_date': self._parse_date(item.get('PRDLST_DCNM_DT', item.get('REG_DT'))),
+                        'ingestion_date': datetime.now(),
+                        'product_name': item.get('PRDUCT', item.get('PRDLST_NM', 'Unknown Product')),
+                        'product_category': item.get('PRDLST_CL_NM', item.get('INDUTY_NM', None)),
+                        'origin_country': item.get('ORIGIN_NM', item.get('BSSH_NM', 'South Korea')),
+                        'destination_country': 'South Korea',
+                        'hazard_category': item.get('VIOL_CONT', item.get('TEST_ITEM_NM', 'Unknown Hazard')),
+                        'hazard_substance': item.get('TEST_ITEM_NM', None),
+                        'risk_decision': 'risk_information',
+                        'risk_level': self._determine_risk_level(item),
+                        'action_taken': item.get('HANDLING_METHOD', None),  # Handling method (취급방법)
+                        'description': item.get('PRDLST_NTCE_MATR', None),
+                        'data_quality_score': 0.90,
+                    }
+                elif endpoint == 'I2710':
+                    # I2710: Overseas Blocked Food Import Information
+                    # Maps fields for imported food that was blocked
+                    record = {
+                        'source': self.source,
+                        'source_reference': item.get('SEQ', item.get('NTCE_NO', 'UNKNOWN')),
+                        'notification_date': self._parse_date(item.get('DSPS_DT', item.get('REG_DT'))),
+                        'ingestion_date': datetime.now(),
+                        'product_name': item.get('PRDLST_NM', 'Unknown Product'),
+                        'product_category': item.get('PRDLST_CL_NM', None),
+                        'origin_country': item.get('MNFCT_CNTRY_NM', item.get('EXPT_CNTRY_NM', 'Unknown')),
+                        'destination_country': 'South Korea',
+                        'hazard_category': item.get('DSPS_RSN', item.get('VIOL_CONT', 'Unknown Hazard')),
+                        'hazard_substance': item.get('UNSUITABLE_ITEM_NM', None),
+                        'risk_decision': 'import_blocked',
+                        'risk_level': 'high',  # Blocked imports are typically high risk
+                        'action_taken': item.get('DSPS_MTHD_NM', 'Import blocked'),
+                        'description': item.get('VIOL_CONT', None),
+                        'data_quality_score': 0.92,
+                    }
+                else:
+                    # Fallback for unknown endpoints
+                    record = {
+                        'source': self.source,
+                        'source_reference': item.get('SEQ', 'UNKNOWN'),
+                        'notification_date': self._parse_date(item.get('REG_DT')),
+                        'ingestion_date': datetime.now(),
+                        'product_name': item.get('PRDLST_NM', 'Unknown Product'),
+                        'product_category': None,
+                        'origin_country': 'South Korea',
+                        'destination_country': 'South Korea',
+                        'hazard_category': 'Unknown',
+                        'hazard_substance': None,
+                        'risk_decision': 'unknown',
+                        'risk_level': 'moderate',
+                        'action_taken': None,
+                        'description': None,
+                        'data_quality_score': 0.70,
+                    }
+                
                 records.append(record)
             except Exception as e:
-                logger.warning(f"Error parsing item: {e}")
+                logger.warning(f"Error parsing item from {endpoint}: {e}")
                 continue
         
         return records

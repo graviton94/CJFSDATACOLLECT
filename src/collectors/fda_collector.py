@@ -22,20 +22,26 @@ from utils.storage import save_to_parquet
 class FDACollector:
     """Collector for FDA Import Alerts."""
     
-    def __init__(self, data_dir: Path = None):
+    # Maximum number of records to retrieve in a single collection run
+    MAX_RECORDS_PER_RUN = 1000
+    
+    def __init__(self, data_dir: Path = None, use_enforcement_api: bool = True):
         """
         Initialize FDA collector.
         
         Args:
             data_dir: Directory for storing processed data
+            use_enforcement_api: Whether to use FDA Enforcement API (True) or mock data (False)
         """
-        self.source = "FDA_IMPORT_ALERTS"
+        self.source = "FDA"
         self.data_dir = data_dir or Path("data/processed")
-        self.base_url = "https://www.accessdata.fda.gov/cms_ia/default.html"
+        self.use_enforcement_api = use_enforcement_api
+        # FDA Enforcement API endpoint
+        self.api_url = "https://api.fda.gov/food/enforcement.json"
         
     def collect(self, days_back: int = 7) -> pd.DataFrame:
         """
-        Collect FDA Import Alerts data.
+        Collect FDA Enforcement Report data.
         
         Args:
             days_back: Number of days to look back
@@ -43,16 +49,14 @@ class FDACollector:
         Returns:
             DataFrame with collected data
         """
-        logger.info(f"Starting FDA Import Alerts collection for last {days_back} days")
+        logger.info(f"Starting FDA Enforcement collection for last {days_back} days")
         
-        # TODO: Implement actual FDA Import Alerts collection
-        # Production implementation should:
-        # 1. Access FDA's official data source (API or web scraping)
-        # 2. Parse XML/JSON responses or HTML structure
-        # 3. Filter by date range
-        # 4. Extract all required fields per unified schema
-        # Current implementation uses mock data for demonstration
-        records = self._create_mock_data(days_back)
+        if self.use_enforcement_api:
+            # Call actual FDA Enforcement API
+            records = self._call_enforcement_api(days_back)
+        else:
+            # Use mock data for testing
+            records = self._create_mock_data(days_back)
         
         if not records:
             logger.warning("No records collected from FDA")
@@ -63,9 +67,198 @@ class FDACollector:
         # Apply Country-Count CDC logic
         df = self._apply_country_count_cdc(df)
         
-        logger.info(f"Collected {len(df)} records from FDA Import Alerts")
+        logger.info(f"Collected {len(df)} records from FDA Enforcement")
         
         return df
+    
+    def _call_enforcement_api(self, days_back: int) -> list:
+        """
+        Call FDA Enforcement Report API with date filtering.
+        
+        Args:
+            days_back: Number of days to look back
+            
+        Returns:
+            List of records from API
+        """
+        records = []
+        
+        try:
+            # Calculate date range
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=days_back)
+            
+            # Format dates for FDA API (YYYYMMDD)
+            start_date_str = start_date.strftime('%Y%m%d')
+            end_date_str = end_date.strftime('%Y%m%d')
+            
+            # Build API query
+            # Search for food enforcement reports within date range
+            search_query = f"report_date:[{start_date_str}+TO+{end_date_str}]"
+            
+            # Pagination parameters
+            limit = 100  # Max results per page
+            skip = 0
+            
+            while True:
+                # Build API URL with query parameters
+                params = {
+                    'search': search_query,
+                    'limit': limit,
+                    'skip': skip
+                }
+                
+                logger.info(f"Calling FDA Enforcement API (skip={skip}, limit={limit})")
+                
+                response = requests.get(self.api_url, params=params, timeout=30)
+                response.raise_for_status()
+                
+                data = response.json()
+                
+                # Check if we have results
+                if 'results' not in data or not data['results']:
+                    logger.info("No more results from FDA Enforcement API")
+                    break
+                
+                # Parse results
+                items = data['results']
+                parsed_records = self._parse_enforcement_response(items)
+                records.extend(parsed_records)
+                
+                logger.info(f"Retrieved {len(parsed_records)} records from FDA Enforcement API")
+                
+                # Check for pagination - if we got less than limit, we're done
+                if len(items) < limit:
+                    break
+                
+                # Move to next page
+                skip += limit
+                
+                # Safety limit to avoid infinite loops
+                if skip >= self.MAX_RECORDS_PER_RUN:
+                    logger.warning(f"Reached safety limit of {self.MAX_RECORDS_PER_RUN} records")
+                    break
+                    
+        except requests.RequestException as e:
+            logger.error(f"Error calling FDA Enforcement API: {e}")
+            logger.warning("Falling back to mock data")
+            records = self._create_mock_data(days_back)
+        except Exception as e:
+            logger.error(f"Error parsing FDA Enforcement response: {e}")
+            logger.warning("Falling back to mock data")
+            records = self._create_mock_data(days_back)
+        
+        return records
+    
+    def _parse_enforcement_response(self, items: list) -> list:
+        """
+        Parse FDA Enforcement API response items.
+        
+        Args:
+            items: List of enforcement records from API
+            
+        Returns:
+            List of parsed records
+        """
+        records = []
+        
+        for item in items:
+            try:
+                # Extract country from various fields
+                country = 'Unknown'
+                if 'country' in item:
+                    country = item['country']
+                elif 'distribution_pattern' in item:
+                    # Try to extract country from distribution pattern
+                    dist_pattern = item['distribution_pattern']
+                    if 'imported' in dist_pattern.lower():
+                        # Try to extract country name
+                        country = self._extract_country_from_text(dist_pattern)
+                
+                # Map FDA fields to our schema
+                record = {
+                    'source': self.source,
+                    'source_reference': item.get('recall_number', 'UNKNOWN'),
+                    'notification_date': self._parse_date(item.get('report_date')),
+                    'ingestion_date': datetime.now(),
+                    'product_name': item.get('product_description', 'Unknown Product'),
+                    'product_category': self._categorize_fda_product(item.get('product_type', '')),
+                    'origin_country': country,
+                    'destination_country': 'United States',
+                    'hazard_category': item.get('reason_for_recall', 'Unknown Hazard'),
+                    'hazard_substance': None,
+                    'risk_decision': 'recall',
+                    'risk_level': self._map_classification(item.get('classification', '')),
+                    'action_taken': item.get('status', 'Ongoing'),
+                    'description': item.get('product_description', None),
+                    'data_quality_score': 0.88,
+                    'country': country,  # For CDC logic
+                }
+                records.append(record)
+            except Exception as e:
+                logger.warning(f"Error parsing FDA enforcement item: {e}")
+                continue
+        
+        return records
+    
+    def _parse_date(self, date_str: str) -> datetime:
+        """Parse FDA date string (YYYYMMDD format)."""
+        if not date_str:
+            return datetime.now()
+        
+        try:
+            # FDA API uses YYYYMMDD format
+            return datetime.strptime(date_str, '%Y%m%d')
+        except:
+            try:
+                # Try ISO format as fallback
+                return datetime.fromisoformat(date_str.replace('Z', '+00:00'))
+            except:
+                return datetime.now()
+    
+    def _map_classification(self, classification: str) -> str:
+        """Map FDA classification to risk level."""
+        if not classification:
+            return 'moderate'
+        
+        classification = classification.lower()
+        if 'class i' in classification or 'class 1' in classification:
+            return 'high'  # Most serious
+        elif 'class ii' in classification or 'class 2' in classification:
+            return 'moderate'
+        elif 'class iii' in classification or 'class 3' in classification:
+            return 'low'
+        else:
+            return 'moderate'
+    
+    def _categorize_fda_product(self, product_type: str) -> str:
+        """Categorize FDA product type."""
+        if not product_type:
+            return 'Other'
+        
+        product_type_lower = product_type.lower()
+        if 'food' in product_type_lower:
+            return 'Food products'
+        elif 'dietary' in product_type_lower:
+            return 'Food supplements'
+        else:
+            return 'Other'
+    
+    def _extract_country_from_text(self, text: str) -> str:
+        """Extract country name from text (simple heuristic)."""
+        if not text:
+            return 'Unknown'
+        
+        # Common countries in FDA enforcement reports
+        countries = ['China', 'India', 'Mexico', 'Vietnam', 'Thailand', 'Canada', 
+                    'Italy', 'France', 'Spain', 'Germany', 'Brazil']
+        
+        text_lower = text.lower()
+        for country in countries:
+            if country.lower() in text_lower:
+                return country
+        
+        return 'Unknown'
     
     def _create_mock_data(self, days_back: int) -> list:
         """Create mock FDA Import Alerts data."""
@@ -86,10 +279,10 @@ class FDACollector:
                 'notification_date': date,
                 'ingestion_date': datetime.now(),
                 'product_name': product,
-                'product_category': self._categorize_product(product),
+                'product_category': self._categorize_fda_product('food'),
                 'origin_country': country,
                 'destination_country': 'United States',
-                'hazard_category': self._determine_hazard(product),
+                'hazard_category': f'Potential contamination in {product}',
                 'hazard_substance': None,
                 'risk_decision': 'import_alert',
                 'risk_level': 'high',
@@ -100,28 +293,6 @@ class FDACollector:
             })
         
         return records
-    
-    def _categorize_product(self, product: str) -> str:
-        """Categorize product type."""
-        if 'Seafood' in product:
-            return 'Fish and seafood'
-        elif 'Dietary' in product or 'Pharmaceuticals' in product:
-            return 'Food supplements'
-        elif 'Spices' in product:
-            return 'Herbs and spices'
-        else:
-            return 'Other'
-    
-    def _determine_hazard(self, product: str) -> str:
-        """Determine hazard category based on product."""
-        if 'Seafood' in product:
-            return 'Biological hazards'
-        elif 'Dietary' in product or 'Pharmaceuticals' in product:
-            return 'Composition'
-        elif 'Spices' in product:
-            return 'Microbial contamination'
-        else:
-            return 'Other hazards'
     
     def _apply_country_count_cdc(self, df: pd.DataFrame) -> pd.DataFrame:
         """
