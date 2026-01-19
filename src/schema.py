@@ -173,16 +173,18 @@ def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     
     # Convert data types
     for col, dtype in UNIFIED_SCHEMA.items():
-        if col in df.columns:
-            if dtype == 'string':
-                df[col] = df[col].astype('string')
-            elif dtype.startswith('datetime'):
-                df[col] = pd.to_datetime(df[col], errors='coerce')
-            elif dtype == 'bool':
-                df[col] = df[col].astype('bool')
-            elif dtype == 'object':
-                # Keep as object (for lists, etc.)
-                pass
+        if col not in df.columns:
+            continue  # Skip columns not in DataFrame
+            
+        if dtype == 'string':
+            df[col] = df[col].astype('string')
+        elif dtype.startswith('datetime'):
+            df[col] = pd.to_datetime(df[col], errors='coerce')
+        elif dtype == 'bool':
+            df[col] = df[col].astype('bool')
+        elif dtype == 'object':
+            # Keep as object (for lists, etc.)
+            pass
     
     # Reorder columns to match schema and drop extra columns
     return df[list(UNIFIED_SCHEMA.keys())]

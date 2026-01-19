@@ -172,7 +172,7 @@ class MFDSCollector:
                         'hazard_substance': item.get('TEST_ITEM_NM', None),
                         'risk_decision': 'risk_information',
                         'risk_level': self._determine_risk_level(item),
-                        'action_taken': item.get('HANDLING_METHOD', None),  # 취급방법 = Handling method
+                        'action_taken': item.get('HANDLING_METHOD', None),  # Handling method (취급방법)
                         'description': item.get('PRDLST_NTCE_MATR', None),
                         'data_quality_score': 0.90,
                     }

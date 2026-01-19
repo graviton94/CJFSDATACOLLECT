@@ -22,6 +22,9 @@ from utils.storage import save_to_parquet
 class FDACollector:
     """Collector for FDA Import Alerts."""
     
+    # Maximum number of records to retrieve in a single collection run
+    MAX_RECORDS_PER_RUN = 1000
+    
     def __init__(self, data_dir: Path = None, use_enforcement_api: bool = True):
         """
         Initialize FDA collector.
@@ -132,8 +135,8 @@ class FDACollector:
                 skip += limit
                 
                 # Safety limit to avoid infinite loops
-                if skip >= 1000:
-                    logger.warning("Reached safety limit of 1000 records")
+                if skip >= self.MAX_RECORDS_PER_RUN:
+                    logger.warning(f"Reached safety limit of {self.MAX_RECORDS_PER_RUN} records")
                     break
                     
         except requests.RequestException as e:
