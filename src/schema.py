@@ -4,9 +4,10 @@ Normalizes data from EU RASFF, FDA Import Alerts, and Korea MFDS.
 Follows the 16 Standard Headers defined in SCHEMA_DOCS.md.
 """
 
-from typing import List, Tuple
+from typing import List, Tuple, Union
 from datetime import datetime
 import pandas as pd
+from pathlib import Path
 
 
 # Unified Parquet schema definition - 16 Standard Headers
@@ -32,8 +33,8 @@ UNIFIED_SCHEMA = {
 
 def validate_data(df: pd.DataFrame) -> Tuple[bool, List[str]]:
     """
-    Validate DataFrame against unified schema.
-    Alias for validate_schema for compatibility with issue requirements.
+    Validate DataFrame against unified schema (16 Standard Headers).
+    This is the primary validation function required by the issue specification.
     
     Args:
         df: DataFrame to validate

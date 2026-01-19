@@ -6,6 +6,7 @@ Handles Parquet file operations with schema validation.
 import pandas as pd
 from pathlib import Path
 from datetime import datetime
+from typing import Union
 from loguru import logger
 import sys
 
@@ -15,7 +16,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from schema import validate_data, normalize_dataframe
 
 
-def save_to_parquet(df: pd.DataFrame, path: str) -> Path:
+def save_to_parquet(df: pd.DataFrame, path: Union[str, Path]) -> Path:
     """
     Save DataFrame to Parquet file with schema validation and append support.
     
@@ -73,7 +74,7 @@ def save_to_parquet(df: pd.DataFrame, path: str) -> Path:
     return path_obj
 
 
-def load_parquet(path: str) -> pd.DataFrame:
+def load_parquet(path: Union[str, Path]) -> pd.DataFrame:
     """
     Load DataFrame from Parquet file.
     

@@ -5,7 +5,7 @@ Uses unique keys based on source, reference number, and date.
 
 import pandas as pd
 import hashlib
-from typing import Set, List
+from typing import Set, List, Union
 from pathlib import Path
 from loguru import logger
 
@@ -71,7 +71,7 @@ def deduplicate_records(df: pd.DataFrame, existing_keys: Set[str] = None) -> pd.
     return df_new
 
 
-def load_existing_keys(path: str) -> Set[str]:
+def load_existing_keys(path: Union[str, Path]) -> Set[str]:
     """
     Load existing record IDs from stored Parquet file.
     
@@ -98,7 +98,7 @@ def load_existing_keys(path: str) -> Set[str]:
     return existing_keys
 
 
-def filter_duplicates(df: pd.DataFrame, path: str) -> pd.DataFrame:
+def filter_duplicates(df: pd.DataFrame, path: Union[str, Path]) -> pd.DataFrame:
     """
     Filter out duplicates before saving to storage.
     
