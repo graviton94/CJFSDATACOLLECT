@@ -1,27 +1,31 @@
 """
 Data deduplication utilities for food safety records.
-Uses unique keys based on source and reference number.
+Uses unique keys based on source, reference number, and date.
 """
 
 import pandas as pd
 import hashlib
-from typing import Set, List
+from typing import Set, List, Union
 from pathlib import Path
 from loguru import logger
 
 
-def generate_unique_key(source: str, source_reference: str) -> str:
+def generate_unique_key(source: str, ref_no: str, date_registered: str = None) -> str:
     """
     Generate a unique key for a food safety record.
     
     Args:
-        source: Data source identifier
-        source_reference: Original reference number
+        source: Data source identifier (FDA, RASFF, MFDS)
+        ref_no: Original reference number
+        date_registered: Optional registration date for additional uniqueness
         
     Returns:
         Unique key string
     """
-    key_string = f"{source}::{source_reference}"
+    if date_registered:
+        key_string = f"{source}::{ref_no}::{date_registered}"
+    else:
+        key_string = f"{source}::{ref_no}"
     return hashlib.sha256(key_string.encode()).hexdigest()[:16]
 
 
@@ -41,7 +45,11 @@ def deduplicate_records(df: pd.DataFrame, existing_keys: Set[str] = None) -> pd.
     
     # Generate unique keys for all records
     df['_unique_key'] = df.apply(
-        lambda row: generate_unique_key(row['source'], row['source_reference']),
+        lambda row: generate_unique_key(
+            row['source'], 
+            row['ref_no'],
+            str(row['date_registered']) if pd.notna(row['date_registered']) else None
+        ),
         axis=1
     )
     
@@ -52,8 +60,8 @@ def deduplicate_records(df: pd.DataFrame, existing_keys: Set[str] = None) -> pd.
     # Remove duplicates within the new data
     df_new = df_new.drop_duplicates(subset=['_unique_key'], keep='first')
     
-    # Set record_id to unique_key
-    df_new['record_id'] = df_new['_unique_key']
+    # Set id to unique_key
+    df_new['id'] = df_new['_unique_key']
     df_new = df_new.drop(columns=['_unique_key'])
     
     duplicates_removed = initial_count - len(df_new)
@@ -63,46 +71,43 @@ def deduplicate_records(df: pd.DataFrame, existing_keys: Set[str] = None) -> pd.
     return df_new
 
 
-def load_existing_keys(data_dir: Path) -> Set[str]:
+def load_existing_keys(path: Union[str, Path]) -> Set[str]:
     """
-    Load existing record IDs from stored Parquet files.
+    Load existing record IDs from stored Parquet file.
     
     Args:
-        data_dir: Directory containing Parquet files
+        path: Path to Parquet file
         
     Returns:
         Set of existing record IDs
     """
     existing_keys = set()
+    path_obj = Path(path)
     
-    if not data_dir.exists():
-        logger.warning(f"Data directory does not exist: {data_dir}")
+    if not path_obj.exists():
+        logger.info(f"No existing data file found at: {path_obj}")
         return existing_keys
     
-    parquet_files = list(data_dir.glob("*.parquet"))
+    try:
+        df = pd.read_parquet(path_obj, columns=['id'], engine='pyarrow')
+        existing_keys.update(df['id'].tolist())
+        logger.info(f"Loaded {len(existing_keys)} existing keys from {path_obj}")
+    except Exception as e:
+        logger.error(f"Error loading existing keys from {path_obj}: {e}")
     
-    for parquet_file in parquet_files:
-        try:
-            df = pd.read_parquet(parquet_file, columns=['record_id'])
-            existing_keys.update(df['record_id'].tolist())
-            logger.info(f"Loaded {len(df)} existing keys from {parquet_file.name}")
-        except Exception as e:
-            logger.error(f"Error loading {parquet_file}: {e}")
-    
-    logger.info(f"Total existing keys loaded: {len(existing_keys)}")
     return existing_keys
 
 
-def merge_and_deduplicate(new_df: pd.DataFrame, data_dir: Path) -> pd.DataFrame:
+def filter_duplicates(df: pd.DataFrame, path: Union[str, Path]) -> pd.DataFrame:
     """
-    Merge new data with existing data and remove duplicates.
+    Filter out duplicates before saving to storage.
     
     Args:
-        new_df: New DataFrame to add
-        data_dir: Directory containing existing Parquet files
+        df: New DataFrame to filter
+        path: Path to existing Parquet file
         
     Returns:
         Deduplicated DataFrame containing only new records
     """
-    existing_keys = load_existing_keys(data_dir)
-    return deduplicate_records(new_df, existing_keys)
+    existing_keys = load_existing_keys(path)
+    return deduplicate_records(df, existing_keys)

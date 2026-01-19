@@ -1,76 +1,40 @@
 """
 Unified schema for food safety risk data from multiple sources.
 Normalizes data from EU RASFF, FDA Import Alerts, and Korea MFDS.
+Follows the 16 Standard Headers defined in SCHEMA_DOCS.md.
 """
 
-from dataclasses import dataclass, field
-from typing import Optional, List, Tuple
+from typing import List, Tuple, Union
 from datetime import datetime
 import pandas as pd
+from pathlib import Path
 
 
-@dataclass
-class FoodSafetyRecord:
-    """Unified data model for food safety incidents."""
-    
-    # Unique identifier
-    record_id: str
-    
-    # Source information
-    source: str  # 'EU_RASFF', 'FDA_IMPORT_ALERTS', 'KR_MFDS'
-    source_reference: str  # Original reference number from source
-    
-    # Temporal data
-    notification_date: datetime
-    ingestion_date: datetime
-    
-    # Product information
-    product_name: str
-    
-    # Geographic data
-    origin_country: str
-    
-    # Risk information
-    hazard_category: str
-    risk_decision: str  # e.g., 'alert', 'rejection', 'recall'
-    
-    # Optional fields
-    product_category: Optional[str] = None
-    destination_country: Optional[str] = None
-    hazard_substance: Optional[str] = None
-    risk_level: Optional[str] = None  # e.g., 'serious', 'moderate', 'low'
-    action_taken: Optional[str] = None
-    description: Optional[str] = None
-    
-    # Metadata
-    data_quality_score: float = 1.0  # 0-1 scale
-    additional_info: dict = field(default_factory=dict)
-
-
-# Unified Parquet schema definition
+# Unified Parquet schema definition - 16 Standard Headers
 UNIFIED_SCHEMA = {
-    'record_id': 'string',
-    'source': 'string',
-    'source_reference': 'string',
-    'notification_date': 'datetime64[ns]',
-    'ingestion_date': 'datetime64[ns]',
-    'product_name': 'string',
-    'product_category': 'string',
-    'origin_country': 'string',
-    'destination_country': 'string',
-    'hazard_category': 'string',
-    'hazard_substance': 'string',
-    'risk_decision': 'string',
-    'risk_level': 'string',
-    'action_taken': 'string',
-    'description': 'string',
-    'data_quality_score': 'float64',
+    'id': 'string',                          # Internal ID (UUID-v4)
+    'ref_no': 'string',                      # Source reference number
+    'source': 'string',                      # Data source (FDA, RASFF, MFDS)
+    'date_registered': 'datetime64[ns]',    # Registration date
+    'product_type_raw': 'string',            # Product type (original)
+    'product_type': 'string',                # Product type (standardized)
+    'category': 'string',                    # Category
+    'product_name': 'string',                # Product name
+    'origin_raw': 'string',                  # Origin country (original)
+    'origin': 'string',                      # Origin country (standardized)
+    'notifying_country_raw': 'string',       # Notifying country (original)
+    'notifying_country': 'string',           # Notifying country (standardized)
+    'hazard_reason': 'string',               # Hazard reason/test item
+    'analyzable': 'bool',                    # Whether analyzable
+    'hazard_category': 'string',             # Hazard category
+    'tags': 'object',                        # Tags list
 }
 
 
-def validate_schema(df: pd.DataFrame) -> Tuple[bool, List[str]]:
+def validate_data(df: pd.DataFrame) -> Tuple[bool, List[str]]:
     """
-    Validate DataFrame against unified schema.
+    Validate DataFrame against unified schema (16 Standard Headers).
+    This is the primary validation function required by the issue specification.
     
     Args:
         df: DataFrame to validate
@@ -80,16 +44,18 @@ def validate_schema(df: pd.DataFrame) -> Tuple[bool, List[str]]:
     """
     errors = []
     
-    # Check required columns
+    # Check required columns (all 16 are required)
     required_cols = [
-        'record_id', 'source', 'source_reference', 'notification_date',
-        'ingestion_date', 'product_name', 'origin_country', 'hazard_category',
-        'risk_decision'
+        'id', 'ref_no', 'source', 'date_registered', 'product_type_raw',
+        'product_type', 'category', 'product_name', 'origin_raw', 'origin',
+        'notifying_country_raw', 'notifying_country', 'hazard_reason',
+        'analyzable', 'hazard_category', 'tags'
     ]
     
     missing_cols = set(required_cols) - set(df.columns)
     if missing_cols:
         errors.append(f"Missing required columns: {missing_cols}")
+        return False, errors
     
     # Validate data types for present columns
     for col, expected_type in UNIFIED_SCHEMA.items():
@@ -100,24 +66,34 @@ def validate_schema(df: pd.DataFrame) -> Tuple[bool, List[str]]:
             elif expected_type.startswith('datetime'):
                 if not pd.api.types.is_datetime64_any_dtype(df[col]):
                     errors.append(f"Column '{col}' should be datetime type")
-            elif expected_type == 'float64':
-                if not pd.api.types.is_float_dtype(df[col]):
-                    errors.append(f"Column '{col}' should be float type")
+            elif expected_type == 'bool':
+                if not pd.api.types.is_bool_dtype(df[col]):
+                    errors.append(f"Column '{col}' should be bool type")
+            elif expected_type == 'object':
+                # Tags can be object type (list)
+                pass
     
     # Validate source values
     if 'source' in df.columns:
-        valid_sources = {'EU_RASFF', 'FDA_IMPORT_ALERTS', 'KR_MFDS'}
-        invalid_sources = set(df['source'].unique()) - valid_sources
+        valid_sources = {'FDA', 'RASFF', 'MFDS'}
+        invalid_sources = set(df['source'].dropna().unique()) - valid_sources
         if invalid_sources:
-            errors.append(f"Invalid source values: {invalid_sources}")
-    
-    # Validate data quality score range
-    if 'data_quality_score' in df.columns:
-        out_of_range = df[(df['data_quality_score'] < 0) | (df['data_quality_score'] > 1)]
-        if not out_of_range.empty:
-            errors.append(f"data_quality_score must be between 0 and 1, found {len(out_of_range)} invalid values")
+            errors.append(f"Invalid source values: {invalid_sources}. Must be one of {valid_sources}")
     
     return len(errors) == 0, errors
+
+
+def validate_schema(df: pd.DataFrame) -> Tuple[bool, List[str]]:
+    """
+    Backward compatibility wrapper for validate_data.
+    
+    Args:
+        df: DataFrame to validate
+        
+    Returns:
+        Tuple of (is_valid, list of error messages)
+    """
+    return validate_data(df)
 
 
 def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
@@ -133,7 +109,12 @@ def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     # Ensure all schema columns exist
     for col in UNIFIED_SCHEMA.keys():
         if col not in df.columns:
-            df[col] = None
+            if col == 'tags':
+                df[col] = [[] for _ in range(len(df))]  # Empty list for tags
+            elif col == 'analyzable':
+                df[col] = True  # Default to True
+            else:
+                df[col] = None
     
     # Convert data types
     for col, dtype in UNIFIED_SCHEMA.items():
@@ -141,8 +122,11 @@ def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
             df[col] = df[col].astype('string')
         elif dtype.startswith('datetime'):
             df[col] = pd.to_datetime(df[col], errors='coerce')
-        elif dtype == 'float64':
-            df[col] = pd.to_numeric(df[col], errors='coerce')
+        elif dtype == 'bool':
+            df[col] = df[col].astype('bool')
+        elif dtype == 'object':
+            # Keep as object (for lists, etc.)
+            pass
     
     # Reorder columns to match schema
     return df[list(UNIFIED_SCHEMA.keys())]

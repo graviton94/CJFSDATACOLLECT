@@ -6,111 +6,94 @@ Handles Parquet file operations with schema validation.
 import pandas as pd
 from pathlib import Path
 from datetime import datetime
+from typing import Union
 from loguru import logger
 import sys
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from schema import validate_schema, normalize_dataframe
+from schema import validate_data, normalize_dataframe
 
 
-def save_to_parquet(df: pd.DataFrame, output_dir: Path, source: str = None) -> Path:
+def save_to_parquet(df: pd.DataFrame, path: Union[str, Path]) -> Path:
     """
-    Save DataFrame to Parquet file with schema validation.
+    Save DataFrame to Parquet file with schema validation and append support.
     
     Args:
         df: DataFrame to save
-        output_dir: Output directory
-        source: Optional source identifier for filename
+        path: Path to Parquet file (supports appending to existing file)
         
     Returns:
         Path to saved file
     """
     # Validate schema before saving
-    is_valid, errors = validate_schema(df)
+    is_valid, errors = validate_data(df)
     if not is_valid:
         logger.error(f"Schema validation failed: {errors}")
         raise ValueError(f"Schema validation failed: {errors}")
     
-    # Ensure output directory exists
-    output_dir.mkdir(parents=True, exist_ok=True)
+    path_obj = Path(path)
     
-    # Generate filename
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    source_prefix = f"{source}_" if source else ""
-    filename = f"{source_prefix}{timestamp}.parquet"
-    output_path = output_dir / filename
+    # Ensure parent directory exists
+    path_obj.parent.mkdir(parents=True, exist_ok=True)
     
-    # Save to Parquet
-    df.to_parquet(
-        output_path,
-        engine='pyarrow',
-        compression='snappy',
-        index=False
-    )
-    
-    logger.info(f"Saved {len(df)} records to {output_path}")
-    return output_path
-
-
-def load_all_data(data_dir: Path) -> pd.DataFrame:
-    """
-    Load all Parquet files from directory.
-    
-    Args:
-        data_dir: Directory containing Parquet files
-        
-    Returns:
-        Combined DataFrame
-    """
-    if not data_dir.exists():
-        logger.warning(f"Data directory does not exist: {data_dir}")
-        return pd.DataFrame()
-    
-    parquet_files = list(data_dir.glob("*.parquet"))
-    
-    if not parquet_files:
-        logger.warning(f"No Parquet files found in {data_dir}")
-        return pd.DataFrame()
-    
-    dfs = []
-    for parquet_file in parquet_files:
+    # Check if file exists for appending
+    if path_obj.exists():
         try:
-            df = pd.read_parquet(parquet_file)
-            dfs.append(df)
-            logger.info(f"Loaded {len(df)} records from {parquet_file.name}")
+            # Load existing data
+            existing_df = pd.read_parquet(path_obj, engine='pyarrow')
+            logger.info(f"Loaded {len(existing_df)} existing records from {path_obj}")
+            
+            # Append new data
+            combined_df = pd.concat([existing_df, df], ignore_index=True)
+            logger.info(f"Appending {len(df)} new records to existing {len(existing_df)} records")
+            
+            # Save combined data
+            combined_df.to_parquet(
+                path_obj,
+                engine='pyarrow',
+                compression='snappy',
+                index=False
+            )
+            
+            logger.info(f"Saved {len(combined_df)} total records to {path_obj}")
         except Exception as e:
-            logger.error(f"Error loading {parquet_file}: {e}")
+            logger.error(f"Error appending to existing file: {e}")
+            raise
+    else:
+        # Save new file
+        df.to_parquet(
+            path_obj,
+            engine='pyarrow',
+            compression='snappy',
+            index=False
+        )
+        logger.info(f"Saved {len(df)} records to new file {path_obj}")
     
-    if not dfs:
-        return pd.DataFrame()
-    
-    combined_df = pd.concat(dfs, ignore_index=True)
-    logger.info(f"Total records loaded: {len(combined_df)}")
-    
-    return combined_df
+    return path_obj
 
 
-def load_recent_data(data_dir: Path, days: int = 30) -> pd.DataFrame:
+def load_parquet(path: Union[str, Path]) -> pd.DataFrame:
     """
-    Load recent data from Parquet files.
+    Load DataFrame from Parquet file.
     
     Args:
-        data_dir: Directory containing Parquet files
-        days: Number of days to look back
+        path: Path to Parquet file
         
     Returns:
-        DataFrame with recent records
+        DataFrame loaded from file
     """
-    df = load_all_data(data_dir)
+    path_obj = Path(path)
     
-    if df.empty:
+    if not path_obj.exists():
+        logger.warning(f"Parquet file does not exist: {path_obj}")
+        return pd.DataFrame()
+    
+    try:
+        df = pd.read_parquet(path_obj, engine='pyarrow')
+        logger.info(f"Loaded {len(df)} records from {path_obj}")
         return df
-    
-    # Filter by ingestion date
-    cutoff_date = datetime.now() - pd.Timedelta(days=days)
-    df_recent = df[df['ingestion_date'] >= cutoff_date]
-    
-    logger.info(f"Filtered to {len(df_recent)} records from last {days} days")
-    return df_recent
+    except Exception as e:
+        logger.error(f"Error loading {path_obj}: {e}")
+        raise
