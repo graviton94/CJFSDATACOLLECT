@@ -210,7 +210,7 @@ def main():
         y=product_counts.values,
         labels={'x': 'Product Category', 'y': 'Alert Count'}
     )
-    fig_products.update_xaxis(tickangle=-45)
+    fig_products.update_xaxes(tickangle=-45)
     st.plotly_chart(fig_products, use_container_width=True)
     
     # Recent alerts table

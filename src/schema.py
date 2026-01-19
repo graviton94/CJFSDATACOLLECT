@@ -26,19 +26,19 @@ class FoodSafetyRecord:
     
     # Product information
     product_name: str
-    product_category: Optional[str] = None
     
     # Geographic data
     origin_country: str
-    destination_country: Optional[str] = None
     
     # Risk information
     hazard_category: str
-    hazard_substance: Optional[str] = None
     risk_decision: str  # e.g., 'alert', 'rejection', 'recall'
-    risk_level: Optional[str] = None  # e.g., 'serious', 'moderate', 'low'
     
-    # Additional details
+    # Optional fields
+    product_category: Optional[str] = None
+    destination_country: Optional[str] = None
+    hazard_substance: Optional[str] = None
+    risk_level: Optional[str] = None  # e.g., 'serious', 'moderate', 'low'
     action_taken: Optional[str] = None
     description: Optional[str] = None
     
