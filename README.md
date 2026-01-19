@@ -25,3 +25,34 @@
    ```bash
    git clone [https://github.com/YOUR_ORG/CJFSDATACOLLECT.git](https://github.com/YOUR_ORG/CJFSDATACOLLECT.git)
    cd CJFSDATACOLLECT
+
+2. **Environment Setup**
+
+   ```bash
+   python -m venv .venv
+   source .venv/bin/activate  # Windows: .venv\Scripts\activate
+   pip install -r requirements.txt
+   playwright install
+
+3. **Configuration Create a .env file:**
+   ```Ini, TOML
+   KOREA_FOOD_API_KEY=your_api_key_here
+
+4. **Run**
+   ```Bash
+   # Run Dashboard
+   streamlit run app.py
+
+   # Run Collector Manually
+   python src/main_scheduler.py
+
+## 📂 Project Structure
+   ```Plaintext
+CJFSDATACOLLECT/
+├── data/               # Parquet Storage & State files
+├── src/
+│   ├── collectors/     # Scrapers & API Clients
+│   ├── processors/     # Normalization & Dedup Logic
+│   └── utils/          # Logger & Helpers
+├── app.py              # Streamlit Entry Point
+└── requirements.txt
