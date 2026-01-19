@@ -1,3 +1,4 @@
+```markdown
 # 🏗️ System Architecture
 
 ## 1. Overview
