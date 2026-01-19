@@ -14,6 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
 from collectors.mfds_collector import MFDSCollector
 from collectors.fda_collector import FDACollector
+from collectors.rasff_scraper import RASFFScraper
 from schema import validate_data, UNIFIED_SCHEMA
 
 
@@ -160,6 +161,58 @@ def test_combined_collectors():
         shutil.rmtree(temp_dir)
 
 
+def test_rasff_scraper_schema():
+    """Test that RASFF scraper produces valid 16-column schema."""
+    scraper = RASFFScraper()
+    
+    # Scrape mock data (will use mock since we can't access the actual portal)
+    df = scraper.scrape(days_back=2)
+    assert len(df) > 0, "Should collect at least one record"
+    
+    # Transform to schema
+    df_transformed = scraper.transform_to_schema(df)
+    
+    # Validate has all 16 columns
+    assert list(df_transformed.columns) == list(UNIFIED_SCHEMA.keys()), \
+        "Should have exactly 16 standard columns"
+    
+    # Validate schema
+    is_valid, errors = validate_data(df_transformed)
+    assert is_valid, f"Schema validation should pass: {errors}"
+    
+    # Check source is correct
+    assert all(df_transformed['source'] == 'RASFF'), "Source should be RASFF"
+    
+    print("✓ RASFF scraper schema test passed")
+
+
+def test_rasff_collect_and_store():
+    """Test RASFF scraper end-to-end pipeline."""
+    temp_dir = tempfile.mkdtemp()
+    try:
+        data_dir = Path(temp_dir)
+        scraper = RASFFScraper(data_dir=data_dir)
+        
+        # Collect and store
+        count = scraper.collect_and_store(days_back=3)
+        assert count > 0, "Should store at least one record"
+        
+        # Verify file exists
+        parquet_file = data_dir / 'hub_data.parquet'
+        assert parquet_file.exists(), "Parquet file should exist"
+        
+        # Load and validate
+        df = pd.read_parquet(parquet_file)
+        assert len(df) == count, f"Should have {count} records"
+        
+        is_valid, errors = validate_data(df)
+        assert is_valid, f"Stored data should be valid: {errors}"
+        
+        print("✓ RASFF collect_and_store test passed")
+    finally:
+        shutil.rmtree(temp_dir)
+
+
 if __name__ == '__main__':
     print("Running Collector Tests")
     print("=" * 60)
@@ -167,8 +220,10 @@ if __name__ == '__main__':
     try:
         test_mfds_collector_schema()
         test_fda_collector_schema()
+        test_rasff_scraper_schema()
         test_mfds_collect_and_store()
         test_fda_collect_and_store()
+        test_rasff_collect_and_store()
         test_combined_collectors()
         
         print("=" * 60)
