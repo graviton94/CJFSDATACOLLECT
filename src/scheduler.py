@@ -13,6 +13,9 @@ import os
 import yaml
 from dotenv import load_dotenv
 
+# Load environment variables at module level
+load_dotenv()
+
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
@@ -33,9 +36,6 @@ class DataIngestionScheduler:
             days_back: Number of days to look back in each run
             config_path: Path to config.yaml file
         """
-        # Load environment variables
-        load_dotenv()
-        
         # Load configuration
         self.config = self._load_config(config_path)
         
@@ -177,8 +177,26 @@ class DataIngestionScheduler:
         
         Args:
             run_time: Time to run daily (HH:MM format)
+            
+        Raises:
+            ValueError: If run_time format is invalid
         """
-        hour, minute = run_time.split(':')
+        # Validate run_time format
+        if ':' not in run_time:
+            raise ValueError(f"Invalid run_time format: '{run_time}'. Expected HH:MM format (e.g., '09:00')")
+        
+        try:
+            hour, minute = run_time.split(':')
+            hour = int(hour)
+            minute = int(minute)
+            
+            if not (0 <= hour <= 23):
+                raise ValueError(f"Hour must be between 0 and 23, got {hour}")
+            if not (0 <= minute <= 59):
+                raise ValueError(f"Minute must be between 0 and 59, got {minute}")
+                
+        except (ValueError, IndexError) as e:
+            raise ValueError(f"Invalid run_time format: '{run_time}'. Expected HH:MM format (e.g., '09:00')") from e
         
         logger.info(f"Scheduling daily collection at {run_time}")
         

@@ -61,9 +61,13 @@ def load_data(days: int = 30):
         return load_recent_data(data_dir, days=days)
 
 
-@st.cache_resource
-def get_scheduler():
-    """Get scheduler instance (cached)."""
+def get_scheduler_instance():
+    """
+    Get a new scheduler instance (not cached to avoid state issues).
+    
+    Returns:
+        DataIngestionScheduler instance
+    """
     return DataIngestionScheduler(data_dir=Path("data/processed"))
 
 
@@ -78,7 +82,7 @@ def run_collector(collector_name: str, days_back: int = 7):
     Returns:
         Number of records collected
     """
-    scheduler = get_scheduler()
+    scheduler = get_scheduler_instance()
     scheduler.days_back = days_back
     return scheduler.run_single_collector(collector_name)
 
@@ -150,7 +154,7 @@ def main():
     if st.sidebar.button("🔄 Run All Collectors", use_container_width=True, type="primary"):
         with st.spinner("Running all collectors..."):
             try:
-                scheduler = get_scheduler()
+                scheduler = get_scheduler_instance()
                 scheduler.days_back = days_back
                 count = scheduler.run_all_collectors()
                 st.success(f"✓ Collected {count} total records from all sources")
@@ -453,7 +457,7 @@ def main():
             
             st.dataframe(
                 df_display,
-                    use_container_width=True,
+                use_container_width=True,
                 hide_index=True,
                 height=400
             )
