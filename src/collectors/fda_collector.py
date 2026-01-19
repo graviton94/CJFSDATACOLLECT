@@ -45,8 +45,13 @@ class FDACollector:
         """
         logger.info(f"Starting FDA Import Alerts collection for last {days_back} days")
         
-        # For demonstration, create mock data
-        # Real implementation would scrape or use FDA API
+        # TODO: Implement actual FDA Import Alerts collection
+        # Production implementation should:
+        # 1. Access FDA's official data source (API or web scraping)
+        # 2. Parse XML/JSON responses or HTML structure
+        # 3. Filter by date range
+        # 4. Extract all required fields per unified schema
+        # Current implementation uses mock data for demonstration
         records = self._create_mock_data(days_back)
         
         if not records:

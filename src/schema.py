@@ -4,7 +4,7 @@ Normalizes data from EU RASFF, FDA Import Alerts, and Korea MFDS.
 """
 
 from dataclasses import dataclass, field
-from typing import Optional, List
+from typing import Optional, List, Tuple
 from datetime import datetime
 import pandas as pd
 
@@ -68,7 +68,7 @@ UNIFIED_SCHEMA = {
 }
 
 
-def validate_schema(df: pd.DataFrame) -> tuple[bool, List[str]]:
+def validate_schema(df: pd.DataFrame) -> Tuple[bool, List[str]]:
     """
     Validate DataFrame against unified schema.
     

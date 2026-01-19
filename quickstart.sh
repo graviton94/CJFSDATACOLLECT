@@ -20,8 +20,12 @@ echo "✓ Dependencies installed"
 # Install Playwright
 echo ""
 echo "🎭 Installing Playwright browser..."
-playwright install chromium > /dev/null 2>&1
-echo "✓ Playwright browser installed"
+if playwright install chromium 2>&1 | grep -E "(error|Error|failed|Failed)" > /dev/null; then
+    echo "✗ Playwright installation failed"
+    exit 1
+else
+    echo "✓ Playwright browser installed"
+fi
 
 # Create data directories
 echo ""

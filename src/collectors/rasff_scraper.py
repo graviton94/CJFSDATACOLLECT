@@ -59,9 +59,14 @@ class RASFFScraper:
                 # Wait for content to load
                 page.wait_for_timeout(3000)
                 
-                # This is a simplified example - actual implementation would need
-                # to interact with the specific RASFF portal structure
-                # For demonstration, we'll create sample data
+                # TODO: Implement actual RASFF portal scraping
+                # This requires identifying the specific selectors for:
+                # - Notification list/table
+                # - Pagination elements
+                # - Detail pages for each notification
+                # - Filtering by date range
+                # For production use, implement specific scraping logic here
+                # Current implementation uses mock data for demonstration
                 logger.warning("Using mock data - actual portal scraping requires specific selectors")
                 
                 browser.close()
