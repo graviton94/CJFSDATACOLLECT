@@ -194,23 +194,25 @@ def main():
         st.metric("📋 Total Records", f"{total_records:,}")
     
     with col2:
-        if 'ingestion_date' in df.columns:
-            last_updated = pd.to_datetime(df['ingestion_date']).max()
+        if 'date_registered' in df.columns:
+            last_updated = pd.to_datetime(df['date_registered']).max()
             st.metric("🕐 Last Updated", last_updated.strftime('%Y-%m-%d %H:%M'))
         else:
             st.metric("🕐 Last Updated", "N/A")
     
     with col3:
-        country_count = df['origin_country'].nunique()
+        country_count = df['origin'].nunique() if 'origin' in df.columns else 0
         st.metric("🌍 Countries", country_count)
     
     with col4:
         # Show breakdown by country (top 3)
-        top_countries = df['origin_country'].value_counts().head(3)
-        country_text = ", ".join([f"{country}: {count}" for country, count in top_countries.items()])
-        st.metric("🔝 Top Countries", top_countries.index[0] if len(top_countries) > 0 else "N/A")
-        if len(top_countries) > 0:
-            st.caption(f"{top_countries.iloc[0]:,} records")
+        if 'origin' in df.columns:
+            top_countries = df['origin'].value_counts().head(3)
+            st.metric("🔝 Top Countries", top_countries.index[0] if len(top_countries) > 0 else "N/A")
+            if len(top_countries) > 0:
+                st.caption(f"{top_countries.iloc[0]:,} records")
+        else:
+            st.metric("🔝 Top Countries", "N/A")
     
     # Apply additional filters
     st.sidebar.subheader("Data Filters")
@@ -222,66 +224,74 @@ def main():
     )
     
     # Country filter
-    countries = st.sidebar.multiselect(
-        "Origin Country",
-        options=sorted(df['origin_country'].dropna().unique().tolist()),
-        default=None,
-        help="Filter by country of origin"
-    )
-    
-    # Product category filter (food_type)
-    if 'product_category' in df.columns:
-        product_categories = st.sidebar.multiselect(
-            "Food Type / Product Category",
-            options=sorted(df['product_category'].dropna().unique().tolist()),
+    if 'origin' in df.columns:
+        countries = st.sidebar.multiselect(
+            "Origin Country",
+            options=sorted(df['origin'].dropna().unique().tolist()),
             default=None,
-            help="Filter by product category or food type"
+            help="Filter by country of origin"
         )
     else:
-        product_categories = None
+        countries = None
+    
+    # Product type filter (food_type)
+    if 'product_type' in df.columns:
+        product_types = st.sidebar.multiselect(
+            "Food Type / Product Type",
+            options=sorted(df['product_type'].dropna().unique().tolist()),
+            default=None,
+            help="Filter by product type or food category"
+        )
+    else:
+        product_types = None
     
     # Date range filter
-    if 'notification_date' in df.columns:
-        df['notification_date_parsed'] = pd.to_datetime(df['notification_date'])
-        min_date = df['notification_date_parsed'].min().date()
-        max_date = df['notification_date_parsed'].max().date()
+    if 'date_registered' in df.columns:
+        df['date_registered_parsed'] = pd.to_datetime(df['date_registered'])
+        min_date = df['date_registered_parsed'].min().date()
+        max_date = df['date_registered_parsed'].max().date()
         
         date_range = st.sidebar.date_input(
             "Date Range",
             value=(min_date, max_date),
             min_value=min_date,
             max_value=max_date,
-            help="Filter by notification date range"
+            help="Filter by registration date range"
         )
     else:
         date_range = None
     
-    risk_levels = st.sidebar.multiselect(
-        "Risk Levels",
-        options=df['risk_level'].dropna().unique().tolist(),
-        default=df['risk_level'].dropna().unique().tolist()
-    )
+    # Hazard category filter
+    if 'hazard_category' in df.columns:
+        hazard_categories = st.sidebar.multiselect(
+            "Hazard Categories",
+            options=sorted(df['hazard_category'].dropna().unique().tolist()),
+            default=df['hazard_category'].dropna().unique().tolist()
+        )
+    else:
+        hazard_categories = None
     
     # Filter dataframe
-    df_filtered = df[
-        (df['source'].isin(sources)) &
-        (df['risk_level'].isin(risk_levels) | df['risk_level'].isna())
-    ]
+    df_filtered = df[df['source'].isin(sources)]
     
     # Apply country filter
-    if countries:
-        df_filtered = df_filtered[df_filtered['origin_country'].isin(countries)]
+    if countries and 'origin' in df.columns:
+        df_filtered = df_filtered[df_filtered['origin'].isin(countries)]
     
-    # Apply product category filter
-    if product_categories and 'product_category' in df.columns:
-        df_filtered = df_filtered[df_filtered['product_category'].isin(product_categories)]
+    # Apply product type filter
+    if product_types and 'product_type' in df.columns:
+        df_filtered = df_filtered[df_filtered['product_type'].isin(product_types)]
+    
+    # Apply hazard category filter
+    if hazard_categories and 'hazard_category' in df.columns:
+        df_filtered = df_filtered[df_filtered['hazard_category'].isin(hazard_categories)]
     
     # Apply date range filter
-    if date_range and len(date_range) == 2:
+    if date_range and len(date_range) == 2 and 'date_registered_parsed' in df_filtered.columns:
         start_date, end_date = date_range
         df_filtered = df_filtered[
-            (df_filtered['notification_date_parsed'].dt.date >= start_date) &
-            (df_filtered['notification_date_parsed'].dt.date <= end_date)
+            (df_filtered['date_registered_parsed'].dt.date >= start_date) &
+            (df_filtered['date_registered_parsed'].dt.date <= end_date)
         ]
     
     # Display filtered record count
@@ -296,16 +306,25 @@ def main():
         st.metric("Total Alerts", f"{len(df_filtered):,}")
     
     with col2:
-        countries = df_filtered['origin_country'].nunique()
-        st.metric("Countries Affected", countries)
+        if 'origin' in df_filtered.columns:
+            countries_count = df_filtered['origin'].nunique()
+            st.metric("Countries Affected", countries_count)
+        else:
+            st.metric("Countries Affected", 0)
     
     with col3:
-        products = df_filtered['product_category'].nunique()
-        st.metric("Product Categories", products)
+        if 'product_type' in df_filtered.columns:
+            products = df_filtered['product_type'].nunique()
+            st.metric("Product Types", products)
+        else:
+            st.metric("Product Types", 0)
     
     with col4:
-        serious_alerts = len(df_filtered[df_filtered['risk_level'] == 'serious'])
-        st.metric("Serious Risk Alerts", serious_alerts)
+        if 'hazard_category' in df_filtered.columns:
+            hazard_count = df_filtered['hazard_category'].nunique()
+            st.metric("Hazard Categories", hazard_count)
+        else:
+            st.metric("Hazard Categories", 0)
     
     # Main visualizations
     st.header("📊 Risk Analysis")
@@ -325,74 +344,85 @@ def main():
         st.plotly_chart(fig_source, use_container_width=True)
     
     with col2:
-        # Risk level distribution
-        st.subheader("Risk Level Distribution")
-        risk_counts = df_filtered['risk_level'].value_counts()
-        fig_risk = px.bar(
-            x=risk_counts.index,
-            y=risk_counts.values,
-            labels={'x': 'Risk Level', 'y': 'Count'},
-            color=risk_counts.index,
-            color_discrete_map={
-                'serious': '#d62728',
-                'high': '#ff7f0e',
-                'moderate': '#ffbb78',
-                'low': '#98df8a'
-            }
-        )
-        st.plotly_chart(fig_risk, use_container_width=True)
+        # Hazard category distribution
+        st.subheader("Hazard Category Distribution")
+        if 'hazard_category' in df_filtered.columns:
+            hazard_counts = df_filtered['hazard_category'].value_counts().head(8)
+            fig_hazard = px.bar(
+                x=hazard_counts.index,
+                y=hazard_counts.values,
+                labels={'x': 'Hazard Category', 'y': 'Count'},
+                color=hazard_counts.values,
+                color_continuous_scale='Reds'
+            )
+            fig_hazard.update_xaxes(tickangle=-45)
+            st.plotly_chart(fig_hazard, use_container_width=True)
+        else:
+            st.info("No hazard category data available")
     
     # Timeline
     st.subheader("📅 Alert Timeline")
-    df_timeline = df_filtered.copy()
-    df_timeline['date'] = pd.to_datetime(df_timeline['notification_date']).dt.date
-    timeline_counts = df_timeline.groupby(['date', 'source']).size().reset_index(name='count')
-    
-    fig_timeline = px.line(
-        timeline_counts,
-        x='date',
-        y='count',
-        color='source',
-        labels={'date': 'Date', 'count': 'Number of Alerts', 'source': 'Source'},
-        title='Daily Alert Trends'
-    )
-    st.plotly_chart(fig_timeline, use_container_width=True)
+    if 'date_registered' in df_filtered.columns:
+        df_timeline = df_filtered.copy()
+        df_timeline['date'] = pd.to_datetime(df_timeline['date_registered']).dt.date
+        timeline_counts = df_timeline.groupby(['date', 'source']).size().reset_index(name='count')
+        
+        fig_timeline = px.line(
+            timeline_counts,
+            x='date',
+            y='count',
+            color='source',
+            labels={'date': 'Date', 'count': 'Number of Alerts', 'source': 'Source'},
+            title='Daily Alert Trends'
+        )
+        st.plotly_chart(fig_timeline, use_container_width=True)
+    else:
+        st.info("No date data available for timeline")
     
     # Top hazards and countries
     col1, col2 = st.columns(2)
     
     with col1:
         st.subheader("🔬 Top Hazard Categories")
-        top_hazards = df_filtered['hazard_category'].value_counts().head(10)
-        fig_hazards = px.bar(
-            x=top_hazards.values,
-            y=top_hazards.index,
-            orientation='h',
-            labels={'x': 'Count', 'y': 'Hazard Category'}
-        )
-        st.plotly_chart(fig_hazards, use_container_width=True)
+        if 'hazard_category' in df_filtered.columns:
+            top_hazards = df_filtered['hazard_category'].value_counts().head(10)
+            fig_hazards = px.bar(
+                x=top_hazards.values,
+                y=top_hazards.index,
+                orientation='h',
+                labels={'x': 'Count', 'y': 'Hazard Category'}
+            )
+            st.plotly_chart(fig_hazards, use_container_width=True)
+        else:
+            st.info("No hazard category data available")
     
     with col2:
         st.subheader("🌍 Top Origin Countries")
-        top_countries = df_filtered['origin_country'].value_counts().head(10)
-        fig_countries = px.bar(
-            x=top_countries.values,
-            y=top_countries.index,
-            orientation='h',
-            labels={'x': 'Count', 'y': 'Country'}
-        )
-        st.plotly_chart(fig_countries, use_container_width=True)
+        if 'origin' in df_filtered.columns:
+            top_countries = df_filtered['origin'].value_counts().head(10)
+            fig_countries = px.bar(
+                x=top_countries.values,
+                y=top_countries.index,
+                orientation='h',
+                labels={'x': 'Count', 'y': 'Country'}
+            )
+            st.plotly_chart(fig_countries, use_container_width=True)
+        else:
+            st.info("No origin country data available")
     
-    # Product categories
-    st.subheader("🥗 Product Category Analysis")
-    product_counts = df_filtered['product_category'].value_counts().head(15)
-    fig_products = px.bar(
-        x=product_counts.index,
-        y=product_counts.values,
-        labels={'x': 'Product Category', 'y': 'Alert Count'}
-    )
-    fig_products.update_xaxes(tickangle=-45)
-    st.plotly_chart(fig_products, use_container_width=True)
+    # Product types
+    st.subheader("🥗 Product Type Analysis")
+    if 'product_type' in df_filtered.columns:
+        product_counts = df_filtered['product_type'].value_counts().head(15)
+        fig_products = px.bar(
+            x=product_counts.index,
+            y=product_counts.values,
+            labels={'x': 'Product Type', 'y': 'Alert Count'}
+        )
+        fig_products.update_xaxes(tickangle=-45)
+        st.plotly_chart(fig_products, use_container_width=True)
+    else:
+        st.info("No product type data available")
     
     # Recent alerts table
     st.header("🔔 Recent Alerts")
@@ -403,29 +433,32 @@ def main():
     with tab1:
         # Summary view with selected columns
         display_columns = [
-            'notification_date', 'source', 'product_name', 'origin_country',
-            'hazard_category', 'risk_level', 'risk_decision'
+            'date_registered', 'source', 'product_name', 'origin',
+            'hazard_category', 'category', 'product_type'
         ]
         
         # Only use columns that exist in the dataframe
         available_columns = [col for col in display_columns if col in df_filtered.columns]
         
-        df_display = df_filtered[available_columns].sort_values(
-            'notification_date', ascending=False
-        ).head(100)
-        
-        # Format dates
-        if 'notification_date' in df_display.columns:
-            df_display['notification_date'] = pd.to_datetime(
-                df_display['notification_date']
-            ).dt.strftime('%Y-%m-%d')
-        
-        st.dataframe(
-            df_display,
-            use_container_width=True,
-            hide_index=True,
-            height=400
-        )
+        if available_columns:
+            df_display = df_filtered[available_columns].copy()
+            
+            # Sort by date if available
+            if 'date_registered' in df_display.columns:
+                df_display = df_display.sort_values('date_registered', ascending=False).head(100)
+                # Format dates
+                df_display['date_registered'] = pd.to_datetime(
+                    df_display['date_registered']
+                ).dt.strftime('%Y-%m-%d')
+            
+            st.dataframe(
+                df_display,
+                    use_container_width=True,
+                hide_index=True,
+                height=400
+            )
+        else:
+            st.info("No data columns available for display")
     
     with tab2:
         # Full data table with all columns from hub_data.parquet
@@ -445,12 +478,15 @@ def main():
             )
         
         if selected_columns:
-            display_df = df_filtered[selected_columns].sort_values(
-                'notification_date' if 'notification_date' in selected_columns else df_filtered.columns[0],
-                ascending=False
-            )
+            display_df = df_filtered[selected_columns].copy()
+            
+            # Sort by date if available
+            if 'date_registered' in selected_columns:
+                display_df = display_df.sort_values('date_registered', ascending=False)
         else:
-            display_df = df_filtered.sort_values('notification_date', ascending=False)
+            display_df = df_filtered.copy()
+            if 'date_registered' in display_df.columns:
+                display_df = display_df.sort_values('date_registered', ascending=False)
         
         # Use st.data_editor for interactive table
         st.data_editor(
@@ -478,11 +514,17 @@ def main():
     
     with col2:
         # Data summary
+        date_range_text = "N/A"
+        if 'date_registered' in df_filtered.columns:
+            min_date = pd.to_datetime(df_filtered['date_registered']).min()
+            max_date = pd.to_datetime(df_filtered['date_registered']).max()
+            date_range_text = f"{min_date.strftime('%Y-%m-%d')} to {max_date.strftime('%Y-%m-%d')}"
+        
         st.info(f"""
         **Data Summary**
         - Total records: {len(df_filtered)}
-        - Date range: {df_filtered['notification_date'].min()} to {df_filtered['notification_date'].max()}
-        - Last updated: {df_filtered['ingestion_date'].max()}
+        - Date range: {date_range_text}
+        - Sources: {', '.join(df_filtered['source'].unique())}
         """)
     
     # Footer

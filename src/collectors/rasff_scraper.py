@@ -29,7 +29,7 @@ class RASFFScraper:
         Args:
             data_dir: Directory for storing processed data
         """
-        self.source = "EU_RASFF"
+        self.source = "RASFF"
         self.data_dir = data_dir or Path("data/processed")
         self.base_url = "https://webgate.ec.europa.eu/rasff-window/screen/list"
         

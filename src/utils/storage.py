@@ -5,7 +5,7 @@ Handles Parquet file operations with schema validation.
 
 import pandas as pd
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Union
 from loguru import logger
 import sys
@@ -102,3 +102,68 @@ def load_parquet(path: Union[str, Path]) -> pd.DataFrame:
     except Exception as e:
         logger.error(f"Error loading {path_obj}: {e}")
         raise
+
+
+def load_all_data(data_dir: Union[str, Path]) -> pd.DataFrame:
+    """
+    Load all data from hub_data.parquet.
+    
+    Args:
+        data_dir: Directory containing hub_data.parquet
+        
+    Returns:
+        DataFrame with all data
+    """
+    data_dir = Path(data_dir)
+    parquet_path = data_dir / 'hub_data.parquet'
+    
+    if not parquet_path.exists():
+        logger.warning(f"No data file found at {parquet_path}")
+        return pd.DataFrame()
+    
+    try:
+        df = pd.read_parquet(parquet_path, engine='pyarrow')
+        logger.info(f"Loaded {len(df)} total records from {parquet_path}")
+        return df
+    except Exception as e:
+        logger.error(f"Error loading data: {e}")
+        return pd.DataFrame()
+
+
+def load_recent_data(data_dir: Union[str, Path], days: int = 30) -> pd.DataFrame:
+    """
+    Load data from the last N days from hub_data.parquet.
+    
+    Args:
+        data_dir: Directory containing hub_data.parquet
+        days: Number of days to load (default: 30)
+        
+    Returns:
+        DataFrame with recent data
+    """
+    df = load_all_data(data_dir)
+    
+    if df.empty:
+        return df
+    
+    # Filter by date_registered
+    if 'date_registered' not in df.columns:
+        logger.warning("date_registered column not found, returning all data")
+        return df
+    
+    try:
+        # Calculate cutoff date
+        cutoff_date = datetime.now() - timedelta(days=days)
+        
+        # Ensure date_registered is datetime
+        df['date_registered'] = pd.to_datetime(df['date_registered'])
+        
+        # Filter recent data
+        df_recent = df[df['date_registered'] >= cutoff_date].copy()
+        
+        logger.info(f"Filtered to {len(df_recent)} records from last {days} days (out of {len(df)} total)")
+        return df_recent
+        
+    except Exception as e:
+        logger.error(f"Error filtering recent data: {e}")
+        return df
