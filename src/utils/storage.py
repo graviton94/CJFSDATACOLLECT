@@ -23,7 +23,7 @@ def save_to_parquet(df: pd.DataFrame, data_dir: Union[str, Path], source: str = 
     Args:
         df: DataFrame to save
         data_dir: Directory path or full file path to Parquet file
-        source: Optional source name for logging (not used for file naming)
+        source: Optional source name (for logging purposes only, not used for file naming)
         
     Returns:
         Path to saved file

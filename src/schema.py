@@ -210,7 +210,7 @@ def _standardize_hazard_category(hazard: str) -> str:
         return '화학물질'  # Chemical
     elif any(term in hazard_lower for term in ['allergen', 'allergy']):
         return '알레르기'  # Allergen
-    elif any(term in hazard_lower for term in ['foreign', '物體', 'object']):
+    elif any(term in hazard_lower for term in ['foreign', 'object', 'matter']):
         return '이물질'  # Foreign matter
     else:
         return '기타'  # Other
