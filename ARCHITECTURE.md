@@ -1,4 +1,3 @@
-```markdown
 # 🏗️ System Architecture
 
 ## 1. Overview
@@ -10,6 +9,7 @@ graph LR
     B -->|Raw Data| C{Processors}
     C -->|Normalize & Dedup| D[(Hub Parquet DB)]
     D -->|Read| E[Streamlit Dashboard]
+```
 
 ## 2. Ingestion Strategy (Extract)
 🇪🇺 EU RASFF (Complex/Dynamic)
