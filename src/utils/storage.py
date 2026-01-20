@@ -13,7 +13,7 @@ import sys
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from schema import validate_schema
+from schema import validate_schema, UNIFIED_SCHEMA
 
 
 def save_to_parquet(df: pd.DataFrame, data_dir: Union[str, Path], source: str = None) -> int:
@@ -37,6 +37,9 @@ def save_to_parquet(df: pd.DataFrame, data_dir: Union[str, Path], source: str = 
     # Validate and normalize schema before saving
     df = validate_schema(df)
     
+    # Strict filtering: Only keep columns defined in UNIFIED_SCHEMA
+    df = df[UNIFIED_SCHEMA].copy()
+    
     # Ensure parent directory exists
     path_obj.parent.mkdir(parents=True, exist_ok=True)
     
@@ -49,6 +52,10 @@ def save_to_parquet(df: pd.DataFrame, data_dir: Union[str, Path], source: str = 
             # Load existing data
             existing_df = pd.read_parquet(path_obj, engine='pyarrow')
             logger.info(f"Loaded {len(existing_df)} existing records from {path_obj}")
+            
+            # Filter existing data to only include UNIFIED_SCHEMA columns (drop obsolete columns)
+            existing_cols = [col for col in UNIFIED_SCHEMA if col in existing_df.columns]
+            existing_df = existing_df[existing_cols].copy()
             
             # Append new data
             combined_df = pd.concat([existing_df, df], ignore_index=True)
@@ -112,7 +119,7 @@ def load_all_data(data_dir: Union[str, Path]) -> pd.DataFrame:
         data_dir: Directory containing hub_data.parquet
         
     Returns:
-        DataFrame with all data
+        DataFrame with all data (filtered to UNIFIED_SCHEMA columns only)
     """
     data_dir = Path(data_dir)
     parquet_path = data_dir / 'hub_data.parquet'
@@ -124,6 +131,11 @@ def load_all_data(data_dir: Union[str, Path]) -> pd.DataFrame:
     try:
         df = pd.read_parquet(parquet_path, engine='pyarrow')
         logger.info(f"Loaded {len(df)} total records from {parquet_path}")
+        
+        # Strict filtering: Only return columns defined in UNIFIED_SCHEMA
+        existing_cols = [col for col in UNIFIED_SCHEMA if col in df.columns]
+        df = df[existing_cols].copy()
+        
         return df
     except Exception as e:
         logger.error(f"Error loading data: {e}")
@@ -212,6 +224,10 @@ def save_to_hub(df: pd.DataFrame, data_dir: Union[str, Path] = None) -> int:
         try:
             existing_df = pd.read_parquet(hub_path, engine='pyarrow')
             logger.info(f"Loaded {len(existing_df)} existing records from {hub_path}")
+            
+            # Filter existing data to only include UNIFIED_SCHEMA columns (drop obsolete columns)
+            existing_cols = [col for col in UNIFIED_SCHEMA if col in existing_df.columns]
+            existing_df = existing_df[existing_cols].copy()
         except Exception as e:
             logger.error(f"Error loading existing hub data: {e}")
             # Continue with empty existing data

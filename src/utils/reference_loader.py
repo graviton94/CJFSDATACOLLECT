@@ -95,8 +95,18 @@ class ReferenceLoader:
                 print(f"   ❌ Critical Error at {start}-{end}: {e}")
                 # 치명적 오류 시, 지금까지 모은 거라도 저장하기 위해 루프 종료
                 break
+        
+        # Convert to DataFrame
+        df = pd.DataFrame(all_rows)
+        
+        # Add ANALYZABLE and INTEREST_ITEM columns for hazard_code_master (I2530)
+        if service_id == "I2530" and not df.empty:
+            if 'ANALYZABLE' not in df.columns:
+                df['ANALYZABLE'] = False
+            if 'INTEREST_ITEM' not in df.columns:
+                df['INTEREST_ITEM'] = False
                 
-        return pd.DataFrame(all_rows)
+        return df
 
     def run(self):
         """전체 타겟 실행"""
