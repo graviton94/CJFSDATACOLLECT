@@ -184,12 +184,12 @@ class FuzzyMatcher:
         # Columns to search in (Korean name, English name)
         match_columns = ['KOR_NM', 'ENG_NM']
         
-        # Try matching strategies in order
-        matched_row = (
-            self._exact_match(search_term, product_ref_df, match_columns) or
-            self._keyword_match(search_term, product_ref_df, match_columns) or
-            self._fuzzy_match(search_term, product_ref_df, match_columns)
-        )
+        # Try matching strategies in order (early exit on first match)
+        matched_row = self._exact_match(search_term, product_ref_df, match_columns)
+        if matched_row is None:
+            matched_row = self._keyword_match(search_term, product_ref_df, match_columns)
+        if matched_row is None:
+            matched_row = self._fuzzy_match(search_term, product_ref_df, match_columns)
         
         if matched_row is not None:
             # Extract output fields: NAMES instead of CODES
@@ -245,12 +245,12 @@ class FuzzyMatcher:
         # Columns to search in (more options for hazards)
         match_columns = ['KOR_NM', 'ENG_NM', 'ABRV', 'NCKNM', 'TESTITM_NM']
         
-        # Try matching strategies in order
-        matched_row = (
-            self._exact_match(search_term, hazard_ref_df, match_columns) or
-            self._keyword_match(search_term, hazard_ref_df, match_columns) or
-            self._fuzzy_match(search_term, hazard_ref_df, match_columns)
-        )
+        # Try matching strategies in order (early exit on first match)
+        matched_row = self._exact_match(search_term, hazard_ref_df, match_columns)
+        if matched_row is None:
+            matched_row = self._keyword_match(search_term, hazard_ref_df, match_columns)
+        if matched_row is None:
+            matched_row = self._fuzzy_match(search_term, hazard_ref_df, match_columns)
         
         if matched_row is not None:
             # Extract output fields
