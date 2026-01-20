@@ -96,7 +96,7 @@ def test_end_to_end_schema_enforcement():
         obsolete_cols = set(test_data.columns) - set(UNIFIED_SCHEMA)
         if obsolete_cols:
             assert all(col not in validated_df.columns for col in obsolete_cols), \
-                "Obsolete columns should be removed after validation"
+                f"Obsolete columns {obsolete_cols} should be removed after validation"
             print(f"   ✓ Removed obsolete columns: {obsolete_cols}")
         
         # Step 3: Save to hub

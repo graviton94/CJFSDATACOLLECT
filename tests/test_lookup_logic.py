@@ -78,7 +78,6 @@ def test_lookup_product_info_with_mock_data():
         try:
             # Create collector instance (will load our mock data)
             # Note: This will fail if KOREA_FOOD_API_KEY is not set, so we need to handle that
-            import os
             original_key = os.getenv("KOREA_FOOD_API_KEY")
             os.environ["KOREA_FOOD_API_KEY"] = "test-key-for-unit-test"
             
