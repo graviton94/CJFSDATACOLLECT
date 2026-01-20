@@ -4,6 +4,7 @@ from datetime import datetime
 from pathlib import Path
 from playwright.sync_api import sync_playwright
 from src.schema import validate_schema, get_empty_dataframe, UNIFIED_SCHEMA
+from src.utils.fuzzy_matcher import FuzzyMatcher
 
 class ImpFoodScraper:
     """
@@ -21,6 +22,9 @@ class ImpFoodScraper:
         print("📥 기준정보(Reference Data) 로드 중...")
         self.product_ref_df = self._load_reference_df("product_code_master.parquet")
         self.hazard_ref_df = self._load_reference_df("hazard_code_master.parquet")
+        
+        # Initialize fuzzy matcher for improved lookup accuracy
+        self.fuzzy_matcher = FuzzyMatcher(similarity_threshold=80)
         print("✅ 기준정보 로드 완료.")
 
     def _load_reference_df(self, filename):
@@ -44,79 +48,17 @@ class ImpFoodScraper:
     def _lookup_product_info(self, product_type):
         """
         품목유형 이름으로 상위/최상위 유형 조회
-        - Same logic as MFDSCollector._lookup_product_info
+        - Enhanced with FuzzyMatcher for better matching accuracy
         - Returns NAMES (NM) instead of CODES (CD)
         """
-        info = {"top": None, "upper": None}
-        
-        if self.product_ref_df.empty or not product_type:
-            return info
-        
-        # 매칭할 컬럼들 (KOR_NM, ENG_NM)
-        match_columns = ['KOR_NM', 'ENG_NM']
-        
-        # Normalize search term (strip whitespace to fix matching issues)
-        search_term = str(product_type).strip().lower()
-        
-        # 각 컬럼에서 매칭 시도 (early exit on first match)
-        matched_row = None
-        for col in match_columns:
-            if col in self.product_ref_df.columns:
-                # 정확히 일치하는 행 찾기 (대소문자 구분 없이, 공백 제거)
-                mask = self.product_ref_df[col].astype(str).str.strip().str.lower() == search_term
-                if mask.any():
-                    matched_row = self.product_ref_df[mask].iloc[0]
-                    break  # Early exit on first match
-        
-        if matched_row is not None:
-            # 출력 필드 추출: NAMES instead of CODES
-            # Try HTRK_PRDLST_NM first, fallback to GR_NM
-            if "HTRK_PRDLST_NM" in matched_row.index and pd.notna(matched_row.get("HTRK_PRDLST_NM")):
-                info["top"] = matched_row.get("HTRK_PRDLST_NM")
-            elif "GR_NM" in matched_row.index and pd.notna(matched_row.get("GR_NM")):
-                info["top"] = matched_row.get("GR_NM")
-            
-            # Try HRRK_PRDLST_NM first, fallback to PRDLST_CL_NM
-            if "HRRK_PRDLST_NM" in matched_row.index and pd.notna(matched_row.get("HRRK_PRDLST_NM")):
-                info["upper"] = matched_row.get("HRRK_PRDLST_NM")
-            elif "PRDLST_CL_NM" in matched_row.index and pd.notna(matched_row.get("PRDLST_CL_NM")):
-                info["upper"] = matched_row.get("PRDLST_CL_NM")
-        
-        return info
+        return self.fuzzy_matcher.match_product_type(product_type, self.product_ref_df)
 
     def _lookup_hazard_info(self, hazard_item):
         """
         시험항목 이름으로 분류(카테고리) 조회
-        - Same logic as MFDSCollector._lookup_hazard_info
+        - Enhanced with FuzzyMatcher for better matching accuracy
         """
-        info = {"category": None, "analyzable": False, "interest": False}
-        
-        if self.hazard_ref_df.empty or not hazard_item:
-            return info
-        
-        # 매칭할 컬럼들
-        match_columns = ['KOR_NM', 'ENG_NM', 'ABRV', 'NCKNM', 'TESTITM_NM']
-        
-        # Normalize search term
-        search_term = str(hazard_item).strip().lower()
-        
-        # 각 컬럼에서 매칭 시도 (early exit on first match)
-        matched_row = None
-        for col in match_columns:
-            if col in self.hazard_ref_df.columns:
-                # 정확히 일치하는 행 찾기 (대소문자 구분 없이)
-                mask = self.hazard_ref_df[col].astype(str).str.strip().str.lower() == search_term
-                if mask.any():
-                    matched_row = self.hazard_ref_df[mask].iloc[0]
-                    break  # Early exit on first match
-        
-        if matched_row is not None:
-            # 출력 필드 추출: M_KOR_NM, ANALYZABLE, INTEREST_ITEM
-            info["category"] = matched_row.get("M_KOR_NM") if "M_KOR_NM" in matched_row.index else None
-            info["analyzable"] = bool(matched_row.get("ANALYZABLE", False)) if "ANALYZABLE" in matched_row.index else False
-            info["interest"] = bool(matched_row.get("INTEREST_ITEM", False)) if "INTEREST_ITEM" in matched_row.index else False
-        
-        return info
+        return self.fuzzy_matcher.match_hazard_category(hazard_item, self.hazard_ref_df)
 
     def scrape(self, max_pages=3):
         """
