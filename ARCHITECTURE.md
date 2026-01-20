@@ -7,9 +7,10 @@ graph LR
     A[Data Sources] --> B[Collectors]
     B --> C[Normalization & Lookup]
     C --> D[Deduplication]
-    D --> E[Storage (Parquet)]
-    E --> F[Dashboard (Streamlit)]
+    D --> E["Storage (Parquet)"]
+    E --> F["Dashboard (Streamlit)"]
 ```
+
 **A. Data Sources**
 - API: MFDS (OpenAPI)
 - Web Scraping: FDA (HTML Parsing), RASFF (SPA/Playwright), ImpFood (DOM/Playwright)
@@ -18,8 +19,8 @@ graph LR
 - Each collector inherits or implements a common interface logic.
 - Responsibility: Fetch raw data -> Parse -> Map to UNIFIED_SCHEMA.
 - Smart Enrichment:
--- Calls ReferenceLoader to map Product Name -> Hierarchy (Top/Upper).
--- Calls ReferenceLoader to map Hazard Item -> Category.
+    - Calls ReferenceLoader to map Product Name -> Hierarchy (Top/Upper).
+    - Calls ReferenceLoader to map Hazard Item -> Category.
 
 **C. Normalization (src/schema.py)**
 - Strict 13-Column Schema:
@@ -48,8 +49,8 @@ graph LR
 **Reference Data Lookup System**
 - File: data/reference/*.parquet
 - Logic:
--- Product Lookup: Matches input string against KOR_NM or ENG_NM in master data to retrieve Hierarchy Names.
--- Hazard Lookup: Matches input string against multiple columns (Name, Alias, Abbr) to retrieve Category.
+    - Product Lookup: Matches input string against KOR_NM or ENG_NM in master data to retrieve Hierarchy Names.
+    - Hazard Lookup: Matches input string against multiple columns (Name, Alias, Abbr) to retrieve Category.
 
 **Scheduler**
 - Uses schedule library for lightweight task management.
