@@ -1,0 +1,5 @@
+blank_issues_enabled: false  # 빈 이슈 생성을 막아 양식 준수를 강제합니다.
+contact_links:
+  - name: 💬 질문 및 토론 (Questions & Discussions)
+    url: https://github.com/graviton94/cjfsdatacollect/discussions
+    about: 코드에 대한 질문이나 아이디어 토론은 이슈 대신 이곳을 이용해주세요.
