@@ -1,28 +1,25 @@
 """
 Streamlit dashboard for food safety risk analysis.
-Provides unified visualization of data from all sources.
+Provides unified visualization of data from all sources and master data management.
 """
 
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import plotly.graph_objects as go
 from pathlib import Path
 from datetime import datetime, timedelta
 import sys
 import os
 from dotenv import load_dotenv
-import yaml
 
 # Load environment variables
 load_dotenv()
 
-# Ensure project root is on the Python path so src imports resolve
+# Ensure project root is on the Python path
 PROJECT_ROOT = Path(__file__).parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.scheduler import DataIngestionScheduler
-
 
 # Page configuration
 st.set_page_config(
@@ -47,6 +44,9 @@ st.markdown("""
         border-radius: 0.5rem;
         margin: 0.5rem 0;
     }
+    div[data-testid="stMetricValue"] {
+        font-size: 1.8rem;
+    }
     </style>
     """, unsafe_allow_html=True)
 
@@ -66,309 +66,295 @@ def load_data():
 
 
 def get_scheduler_instance():
-    """
-    Get a new scheduler instance (not cached to avoid state issues).
-    
-    Returns:
-        DataIngestionScheduler instance
-    """
+    """Get a new scheduler instance."""
     return DataIngestionScheduler(data_dir=Path("data/hub"))
 
 
 def run_collector(collector_name: str, days_back: int = 7):
-    """
-    Run a specific collector and return results.
-    
-    Args:
-        collector_name: Name of collector to run
-        days_back: Number of days to look back
-        
-    Returns:
-        Number of records collected
-    """
+    """Run a specific collector and return results."""
     scheduler = get_scheduler_instance()
     scheduler.days_back = days_back
     return scheduler.run_single_collector(collector_name)
 
 
-def main():
-    """Main dashboard application."""
+def render_master_data_tab():
+    """Render the Master Data Management tab."""
+    st.header("📚 기준정보 데이터베이스 관리")
+    st.markdown("식약처 기준정보(품목유형, 시험항목 등) Parquet 파일을 조회/수정/저장합니다.")
     
-    # Header
-    st.markdown('<h1 class="main-header">🍎 Global Food Safety Intelligence Platform</h1>', 
-                unsafe_allow_html=True)
+    REF_DIR = Path("data/reference")
+    FILES = {
+        "품목유형": "product_code_master.parquet",
+        "시험항목": "hazard_code_master.parquet",
+        "개별기준규격": "individual_spec_master.parquet",
+        "공통기준규격": "common_spec_master.parquet"
+    }
     
-    st.markdown("""
-    Real-time food safety risk intelligence aggregating data from:
-    - 🇪🇺 **EU RASFF** (Rapid Alert System for Food and Feed)
-    - 🇺🇸 **FDA Import Alerts** (US Food and Drug Administration)
-    - 🇰🇷 **Korea MFDS** (Ministry of Food and Drug Safety)
-    """)
-    
-    # Sidebar - Control Panel
-    st.sidebar.header("🎮 Control Panel")
-    
-    st.sidebar.subheader("Manual Data Collection")
-    st.sidebar.markdown("Trigger specific collectors to fetch new data:")
-    
-    # Days back selector for manual collection
-    days_back = st.sidebar.number_input(
-        "Days to look back",
-        min_value=1,
-        max_value=30,
-        value=7,
-        help="Number of days to collect data for"
+    # 1. File selector
+    selected_name = st.selectbox(
+        "📂 관리할 백서 선택",
+        list(FILES.keys()),
+        help="수정하려는 기준정보 파일을 선택하세요"
     )
+    file_path = REF_DIR / FILES[selected_name]
     
-    # Collector buttons
-    col1, col2 = st.sidebar.columns(2)
+    # 2. Load data
+    if not file_path.exists():
+        st.error(f"⚠️ 파일을 찾을 수 없습니다: {file_path}")
+        st.info("기준정보를 먼저 생성하려면 `python src/utils/reference_loader.py`를 실행하세요.")
+        return
     
-    with col1:
-        if st.button("🇰🇷 Run MFDS", use_container_width=True):
-            with st.spinner("Collecting from Korea MFDS..."):
+    try:
+        # Load full dataset
+        df_full = pd.read_parquet(file_path, engine='pyarrow')
+        st.success(f"✅ 로드 완료: {len(df_full):,}건의 레코드")
+        
+        # 3. Search filter
+        search_term = st.text_input(
+            "🔍 데이터 검색",
+            placeholder="키워드를 입력하세요 (예: 식품, 검사항목명 등)",
+            help="모든 컬럼에서 키워드를 검색합니다"
+        )
+        
+        # Apply search filter
+        if search_term:
+            mask = df_full.apply(
+                lambda x: x.astype(str).str.contains(search_term, case=False, na=False).any(),
+                axis=1
+            )
+            df_display = df_full[mask].copy()
+            st.info(f"🔎 검색 결과: {len(df_display):,}건 (전체: {len(df_full):,}건)")
+        else:
+            df_display = df_full.copy()
+        
+        # 4. Interactive editor
+        st.markdown("---")
+        st.subheader("✏️ 데이터 편집기")
+        st.caption("행 수정이 가능합니다. 편집 후 반드시 '저장' 버튼을 클릭하세요.")
+        
+        edited_df = st.data_editor(
+            df_display,
+            num_rows="dynamic",
+            use_container_width=True,
+            height=500,
+            key=f"editor_{selected_name}"
+        )
+        
+        # 5. Save logic
+        st.markdown("---")
+        col1, col2 = st.columns([3, 1])
+        
+        with col2:
+            if st.button("💾 변경사항 저장", type="primary", use_container_width=True):
                 try:
-                    count = run_collector("MFDS", days_back)
-                    st.success(f"✓ Collected {count} records from MFDS")
-                    st.cache_data.clear()  # Clear cache to reload data
+                    if search_term:
+                        # 필터링된 상태에서는 원본 데이터의 해당 인덱스만 업데이트
+                        # combine_first나 update를 사용하여 병합
+                        st.info("필터링된 데이터를 원본에 병합 중...")
+                        # 원본 데이터에 수정본 업데이트 (인덱스 기준)
+                        df_full.update(edited_df)
+                        # 추가된 행이 있다면 처리 (인덱스가 새로 생성된 경우)
+                        new_rows = edited_df.index.difference(df_full.index)
+                        if not new_rows.empty:
+                            df_full = pd.concat([df_full, edited_df.loc[new_rows]])
+                        
+                        save_df = df_full
+                    else:
+                        save_df = edited_df
+                    
+                    save_df.to_parquet(file_path, engine='pyarrow', compression='snappy')
+                    st.success(f"✅ {selected_name} 저장 완료!")
+                    st.cache_data.clear() # 캐시 초기화
                     st.rerun()
                 except Exception as e:
-                    st.error(f"Error: {str(e)}")
-    
-    with col2:
-        if st.button("🇺🇸 Run FDA", use_container_width=True):
-            with st.spinner("Collecting from FDA..."):
-                try:
-                    count = run_collector("FDA", days_back)
-                    st.success(f"✓ Collected {count} records from FDA")
-                    st.cache_data.clear()
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Error: {str(e)}")
-    
-    if st.sidebar.button("🇪🇺 Run RASFF", use_container_width=True):
-        with st.spinner("Collecting from EU RASFF..."):
-            try:
-                count = run_collector("RASFF", days_back)
-                st.success(f"✓ Collected {count} records from RASFF")
-                st.cache_data.clear()
-                st.rerun()
-            except Exception as e:
-                st.error(f"Error: {str(e)}")
-    
-    if st.sidebar.button("🔄 Run All Collectors", use_container_width=True, type="primary"):
-        with st.spinner("Running all collectors..."):
-            try:
-                scheduler = get_scheduler_instance()
-                scheduler.days_back = days_back
-                count = scheduler.run_all_collectors()
-                st.success(f"✓ Collected {count} total records from all sources")
-                st.cache_data.clear()
-                st.rerun()
-            except Exception as e:
-                st.error(f"Error: {str(e)}")
-    
-    st.sidebar.markdown("---")
-    
+                    st.error(f"저장 실패: {e}")
+                    
+    except Exception as e:
+        st.error(f"파일 로드 중 오류 발생: {e}")
+
+
+def render_dashboard(df: pd.DataFrame):
+    """Render the Main Dashboard tab."""
     # Sidebar filters
     st.sidebar.header("📊 Filters")
     
-    # Load data first to get available options
-    with st.spinner("Loading data..."):
-        df = load_data()
-    
-    if df.empty:
-        st.warning("⚠️ No data available. Please run the data collection first.")
-        st.info("""
-        **To collect data:**
-        - Use the Control Panel buttons above, or
-        - Run: `python src/scheduler.py --mode once --days 7`
-        """)
-        return
-    
-    # Date Range Slider Filter
-    if 'date_registered' in df.columns:
-        df['date_registered_parsed'] = pd.to_datetime(df['date_registered'], errors='coerce')
-        min_date = df['date_registered_parsed'].min()
-        max_date = df['date_registered_parsed'].max()
+    # Date Range Slider
+    if 'registration_date' in df.columns:
+        # 문자열을 날짜로 변환
+        df['date_parsed'] = pd.to_datetime(df['registration_date'], errors='coerce')
+        min_date = df['date_parsed'].min()
+        max_date = df['date_parsed'].max()
         
-        # Convert to date for slider
-        min_date_val = min_date.date() if pd.notna(min_date) else datetime.now().date() - timedelta(days=30)
-        max_date_val = max_date.date() if pd.notna(max_date) else datetime.now().date()
-        
-        date_range = st.sidebar.slider(
-            "Date Range",
-            min_value=min_date_val,
-            max_value=max_date_val,
-            value=(min_date_val, max_date_val),
-            help="Filter alerts by registration date range"
-        )
+        if pd.notna(min_date) and pd.notna(max_date):
+            min_val = min_date.date()
+            max_val = max_date.date()
+            
+            date_range = st.sidebar.slider(
+                "Date Range",
+                min_value=min_val,
+                max_value=max_val,
+                value=(min_val, max_val)
+            )
+        else:
+            date_range = None
     else:
         date_range = None
-    
-    # Source Multiselect Filter
+        st.sidebar.warning("날짜 컬럼(registration_date)을 찾을 수 없습니다.")
+
+    # Source Filter
     sources = st.sidebar.multiselect(
         "Source",
         options=['FDA', 'RASFF', 'MFDS'],
-        default=['FDA', 'RASFF', 'MFDS'],
-        help="Select data sources to include"
+        default=['FDA', 'RASFF', 'MFDS']
     )
     
-    # Hazard Category Multiselect Filter
+    # Hazard Category Filter
     if 'hazard_category' in df.columns:
         available_hazards = sorted(df['hazard_category'].dropna().unique().tolist())
         hazard_categories = st.sidebar.multiselect(
             "Hazard Category",
             options=available_hazards,
-            default=available_hazards,
-            help="Filter by hazard categories"
+            default=available_hazards
         )
     else:
         hazard_categories = None
-    
-    # Filter dataframe based on sidebar selections
+
+    # Apply Filters
     df_filtered = df.copy()
     
-    # Apply source filter
     if sources:
-        df_filtered = df_filtered[df_filtered['source'].isin(sources)]
-    
-    # Apply hazard category filter
+        df_filtered = df_filtered[df_filtered['data_source'].isin(sources)]
+        
     if hazard_categories and 'hazard_category' in df_filtered.columns:
         df_filtered = df_filtered[df_filtered['hazard_category'].isin(hazard_categories)]
-    
-    # Apply date range filter
-    if date_range and 'date_registered_parsed' in df_filtered.columns:
+        
+    if date_range and 'date_parsed' in df_filtered.columns:
         start_date, end_date = date_range
         df_filtered = df_filtered[
-            (df_filtered['date_registered_parsed'].dt.date >= start_date) &
-            (df_filtered['date_registered_parsed'].dt.date <= end_date)
+            (df_filtered['date_parsed'].dt.date >= start_date) & 
+            (df_filtered['date_parsed'].dt.date <= end_date)
         ]
+
+    # Metrics Layout
+    st.markdown("### 📊 Key Metrics")
+    m_col1, m_col2, m_col3 = st.columns(3)
     
-    # Main Page Layout
-    st.markdown("---")
-    
-    # Top Row: 3 Metric Cards
-    st.header("📊 Key Metrics")
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        total_alerts = len(df_filtered)
-        st.metric("📋 Total Alerts", f"{total_alerts:,}")
-    
-    with col2:
-        # High Risk Count - count records with specific high-risk hazard categories
-        high_risk_keywords = ['salmonella', 'listeria', 'e.coli', 'heavy metal', 'pesticide']
-        if 'hazard_category' in df_filtered.columns:
-            high_risk_count = df_filtered['hazard_category'].str.lower().str.contains(
-                '|'.join(high_risk_keywords), na=False
-            ).sum()
-        elif 'hazard_reason' in df_filtered.columns:
-            high_risk_count = df_filtered['hazard_reason'].str.lower().str.contains(
-                '|'.join(high_risk_keywords), na=False
-            ).sum()
+    with m_col1:
+        st.metric("📋 Total Alerts", f"{len(df_filtered):,}")
+        
+    with m_col2:
+        # High Risk Keyword Count
+        keywords = ['salmonella', 'listeria', 'e.coli', 'metal', 'glass']
+        if 'hazard_item' in df_filtered.columns:
+            risk_count = df_filtered['hazard_item'].str.lower().str.contains('|'.join(keywords), na=False).sum()
+            st.metric("⚠️ Critical Hazards", f"{risk_count:,}")
         else:
-            high_risk_count = 0
-        st.metric("⚠️ High Risk Count", f"{high_risk_count:,}")
-    
-    with col3:
-        # Top Hazard Country - country with most alerts
-        if 'origin' in df_filtered.columns and not df_filtered.empty:
-            top_country = df_filtered['origin'].value_counts().head(1)
-            if len(top_country) > 0:
-                country_name = top_country.index[0]
-                country_count = top_country.iloc[0]
-                st.metric("🌍 Top Hazard Country", f"{country_name}", f"{country_count:,} alerts")
+            st.metric("⚠️ Critical Hazards", "N/A")
+            
+    with m_col3:
+        # Top Country
+        if 'origin_country' in df_filtered.columns and not df_filtered.empty:
+            top = df_filtered['origin_country'].value_counts().head(1)
+            if not top.empty:
+                st.metric("🌍 Top Origin", top.index[0], f"{top.iloc[0]} alerts")
             else:
-                st.metric("🌍 Top Hazard Country", "N/A")
+                st.metric("🌍 Top Origin", "-")
         else:
-            st.metric("🌍 Top Hazard Country", "N/A")
+            st.metric("🌍 Top Origin", "-")
+
+    st.markdown("---")
+
+    # Charts Layout
+    c_col1, c_col2 = st.columns(2)
     
-    # Middle Row: Two Charts Side-by-Side
-    st.header("📈 Risk Analysis")
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.subheader("Alerts by Country (Top 10)")
-        if 'origin' in df_filtered.columns and not df_filtered.empty:
-            top_countries = df_filtered['origin'].value_counts().head(10)
-            fig_countries = px.bar(
+    with c_col1:
+        st.subheader("국가별 발생 현황 (Top 10)")
+        if 'origin_country' in df_filtered.columns:
+            top_countries = df_filtered['origin_country'].value_counts().head(10)
+            fig = px.bar(
                 x=top_countries.values,
                 y=top_countries.index,
                 orientation='h',
-                labels={'x': 'Number of Alerts', 'y': 'Country'},
-                title='Top 10 Countries by Alert Count'
+                labels={'x': 'Count', 'y': 'Country'},
+                color=top_countries.values,
+                color_continuous_scale='Reds'
             )
-            fig_countries.update_layout(yaxis={'categoryorder': 'total ascending'})
-            st.plotly_chart(fig_countries, use_container_width=True)
-        else:
-            st.info("No country data available")
-    
-    with col2:
-        st.subheader("Daily Alert Trends")
-        if 'date_registered_parsed' in df_filtered.columns and not df_filtered.empty:
-            df_timeline = df_filtered.copy()
-            df_timeline['date'] = df_timeline['date_registered_parsed'].dt.date
-            timeline_counts = df_timeline.groupby('date').size().reset_index(name='count')
-            timeline_counts = timeline_counts.sort_values('date')
+            fig.update_layout(yaxis={'categoryorder': 'total ascending'})
+            st.plotly_chart(fig, use_container_width=True)
             
-            fig_timeline = px.line(
-                timeline_counts,
-                x='date',
-                y='count',
-                labels={'date': 'Date', 'count': 'Number of Alerts'},
-                title='Daily Alert Trends Over Time'
-            )
-            fig_timeline.update_traces(mode='lines+markers')
-            st.plotly_chart(fig_timeline, use_container_width=True)
-        else:
-            st.info("No date data available for timeline")
-    
-    # Bottom Row: Searchable Dataframe
-    st.header("🔍 Raw Data Explorer")
-    st.caption(f"Displaying {len(df_filtered):,} filtered records from {len(df):,} total")
-    
-    # Select columns to display
-    display_columns = [
-        'date_registered', 'source', 'product_name', 'origin',
-        'hazard_category', 'category', 'product_type', 'ref_no'
-    ]
-    available_columns = [col for col in display_columns if col in df_filtered.columns]
-    
-    if available_columns:
-        df_display = df_filtered[available_columns].copy()
-        
-        # Sort by date if available
-        if 'date_registered' in df_display.columns:
-            # Add parsed column if not already in display
-            if 'date_registered_parsed' not in df_display.columns and 'date_registered_parsed' in df_filtered.columns:
-                df_display['date_registered_parsed'] = df_filtered['date_registered_parsed']
-            
-            if 'date_registered_parsed' in df_display.columns:
-                df_display = df_display.sort_values('date_registered_parsed', ascending=False)
-                # Format dates for display using already parsed column
-                df_display['date_registered'] = df_display['date_registered_parsed'].dt.strftime('%Y-%m-%d')
-                # Drop the temporary parsed column
-                df_display = df_display.drop(columns=['date_registered_parsed'])
-            else:
-                df_display = df_display.sort_values('date_registered', ascending=False)
-        
-        # Display searchable dataframe
-        st.dataframe(
-            df_display,
-            use_container_width=True,
-            hide_index=True,
-            height=400
-        )
-    else:
-        st.info("No data columns available for display")
-    # Footer
-    st.markdown("---")
+    with c_col2:
+        st.subheader("일별 발생 추이")
+        if 'date_parsed' in df_filtered.columns:
+            daily_counts = df_filtered.groupby(df_filtered['date_parsed'].dt.date).size().reset_index(name='count')
+            fig2 = px.line(daily_counts, x='date_parsed', y='count', markers=True)
+            st.plotly_chart(fig2, use_container_width=True)
+
+    # Data Table
+    st.markdown("### 🔍 상세 데이터 (Raw Data)")
+    st.dataframe(
+        df_filtered.drop(columns=['date_parsed'], errors='ignore'),
+        use_container_width=True,
+        hide_index=True
+    )
+
+
+def main():
+    """Main entry point."""
+    # Header
+    st.markdown('<h1 class="main-header">🛡️ Global Food Safety Intelligence Platform</h1>', unsafe_allow_html=True)
     st.markdown("""
-    <div style="text-align: center; color: #666;">
-    Global Food Safety Intelligence Platform | Data sources: EU RASFF, FDA, Korea MFDS
+    <div style="text-align: center; color: #666; margin-bottom: 20px;">
+    실시간 식품 안전 정보 통합 모니터링 시스템 (식약처, FDA, RASFF)
     </div>
     """, unsafe_allow_html=True)
 
+    # Sidebar Controls
+    st.sidebar.header("🎮 Data Controls")
+    days_back = st.sidebar.number_input("Days to Collect", min_value=1, value=7)
+    
+    col1, col2 = st.sidebar.columns(2)
+    with col1:
+        if st.button("🇰🇷 Run MFDS"):
+            with st.spinner("Collecting MFDS..."):
+                count = run_collector("MFDS", days_back)
+                st.success(f"{count} records")
+                st.cache_data.clear()
+                st.rerun()
+    with col2:
+        if st.button("🇺🇸 Run FDA"):
+            with st.spinner("Collecting FDA..."):
+                count = run_collector("FDA", days_back)
+                st.success(f"{count} records")
+                st.cache_data.clear()
+                st.rerun()
+                
+    if st.sidebar.button("🔄 Run All Sources", type="primary"):
+        with st.spinner("Running Full Pipeline..."):
+            scheduler = get_scheduler_instance()
+            scheduler.days_back = days_back
+            count = scheduler.run_all_collectors()
+            st.success(f"Total {count} records collected.")
+            st.cache_data.clear()
+            st.rerun()
+
+    st.sidebar.markdown("---")
+
+    # Tabs
+    tab1, tab2 = st.tabs(["📊 Dashboard", "📚 기준정보 관리"])
+    
+    with tab1:
+        df = load_data()
+        if df.empty:
+            st.warning("⚠️ 데이터가 없습니다. 사이드바에서 수집을 실행해주세요.")
+        else:
+            render_dashboard(df)
+            
+    with tab2:
+        render_master_data_tab()
+
+    # Footer
+    st.markdown("---")
+    st.markdown("© 2025 CJFSDATACOLLECT Project | Powered by Gemini & Streamlit")
 
 if __name__ == '__main__':
     main()
