@@ -14,7 +14,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
 
 from schema import validate_data, normalize_dataframe, UNIFIED_SCHEMA
 from utils.deduplication import generate_unique_key, deduplicate_records, filter_duplicates
-from utils.storage import save_to_parquet, load_parquet
+from utils.storage import save_to_parquet, load_parquet, save_to_hub
 
 
 def test_unique_key_generation():
@@ -301,6 +301,302 @@ def test_complete_pipeline():
         shutil.rmtree(temp_dir)
 
 
+def test_save_to_hub_new_file():
+    """Test save_to_hub when creating a new file."""
+    from datetime import datetime
+    
+    temp_dir = tempfile.mkdtemp()
+    try:
+        hub_dir = Path(temp_dir) / 'hub'
+        
+        # Create test data with explicit IDs
+        df = pd.DataFrame([
+            {
+                'id': 'unique_id_001',
+                'ref_no': '2024.1000',
+                'source': 'FDA',
+                'date_registered': datetime(2024, 5, 20),
+                'product_type_raw': 'Fishery products',
+                'product_type': '수산물',
+                'category': '식품',
+                'product_name': 'Frozen Shrimp',
+                'origin_raw': 'Vietnam',
+                'origin': '베트남',
+                'notifying_country_raw': 'Germany',
+                'notifying_country': '독일',
+                'hazard_reason': 'Salmonella detected',
+                'analyzable': True,
+                'hazard_category': '미생물',
+                'tags': ['Shrimp', 'High Risk'],
+            },
+            {
+                'id': 'unique_id_002',
+                'ref_no': '2024.1001',
+                'source': 'RASFF',
+                'date_registered': datetime(2024, 5, 21),
+                'product_type_raw': 'Meat products',
+                'product_type': '육류',
+                'category': '식품',
+                'product_name': 'Beef',
+                'origin_raw': 'Brazil',
+                'origin': '브라질',
+                'notifying_country_raw': 'Spain',
+                'notifying_country': '스페인',
+                'hazard_reason': 'E. coli O157:H7',
+                'analyzable': True,
+                'hazard_category': '미생물',
+                'tags': ['Beef', 'Critical'],
+            },
+        ])
+        
+        # Normalize
+        df = normalize_dataframe(df)
+        
+        # Save to hub (should create new file)
+        new_count = save_to_hub(df, hub_dir)
+        
+        assert new_count == 2, f"Should add 2 new records, got {new_count}"
+        
+        # Verify file exists
+        hub_path = hub_dir / 'hub_data.parquet'
+        assert hub_path.exists(), "Hub file should exist"
+        
+        # Load and verify
+        df_loaded = load_parquet(hub_path)
+        assert len(df_loaded) == 2, "Should have 2 records"
+        assert 'unique_id_001' in df_loaded['id'].values, "Should contain first record"
+        assert 'unique_id_002' in df_loaded['id'].values, "Should contain second record"
+        
+        print("✓ save_to_hub new file test passed")
+        
+    finally:
+        shutil.rmtree(temp_dir)
+
+
+def test_save_to_hub_with_deduplication():
+    """Test save_to_hub with deduplication of existing records."""
+    from datetime import datetime
+    
+    temp_dir = tempfile.mkdtemp()
+    try:
+        hub_dir = Path(temp_dir) / 'hub'
+        
+        # Create initial data
+        df1 = pd.DataFrame([
+            {
+                'id': 'unique_id_001',
+                'ref_no': '2024.1000',
+                'source': 'FDA',
+                'date_registered': datetime(2024, 5, 20),
+                'product_type_raw': 'Fishery products',
+                'product_type': '수산물',
+                'category': '식품',
+                'product_name': 'Frozen Shrimp',
+                'origin_raw': 'Vietnam',
+                'origin': '베트남',
+                'notifying_country_raw': 'Germany',
+                'notifying_country': '독일',
+                'hazard_reason': 'Salmonella detected',
+                'analyzable': True,
+                'hazard_category': '미생물',
+                'tags': ['Shrimp', 'High Risk'],
+            },
+        ])
+        df1 = normalize_dataframe(df1)
+        
+        # Save first batch
+        count1 = save_to_hub(df1, hub_dir)
+        assert count1 == 1, "Should add 1 record"
+        
+        # Create second batch with 1 duplicate and 1 new record
+        df2 = pd.DataFrame([
+            {
+                'id': 'unique_id_001',  # Duplicate
+                'ref_no': '2024.1000',
+                'source': 'FDA',
+                'date_registered': datetime(2024, 5, 20),
+                'product_type_raw': 'Fishery products',
+                'product_type': '수산물',
+                'category': '식품',
+                'product_name': 'Frozen Shrimp',
+                'origin_raw': 'Vietnam',
+                'origin': '베트남',
+                'notifying_country_raw': 'Germany',
+                'notifying_country': '독일',
+                'hazard_reason': 'Salmonella detected',
+                'analyzable': True,
+                'hazard_category': '미생물',
+                'tags': ['Shrimp', 'High Risk'],
+            },
+            {
+                'id': 'unique_id_002',  # New
+                'ref_no': '2024.1001',
+                'source': 'RASFF',
+                'date_registered': datetime(2024, 5, 21),
+                'product_type_raw': 'Meat products',
+                'product_type': '육류',
+                'category': '식품',
+                'product_name': 'Beef',
+                'origin_raw': 'Brazil',
+                'origin': '브라질',
+                'notifying_country_raw': 'Spain',
+                'notifying_country': '스페인',
+                'hazard_reason': 'E. coli O157:H7',
+                'analyzable': True,
+                'hazard_category': '미생물',
+                'tags': ['Beef', 'Critical'],
+            },
+        ])
+        df2 = normalize_dataframe(df2)
+        
+        # Save second batch (should only add 1 new record)
+        count2 = save_to_hub(df2, hub_dir)
+        assert count2 == 1, f"Should add only 1 new record, got {count2}"
+        
+        # Verify total records
+        hub_path = hub_dir / 'hub_data.parquet'
+        df_loaded = load_parquet(hub_path)
+        assert len(df_loaded) == 2, f"Should have 2 total records, got {len(df_loaded)}"
+        
+        print("✓ save_to_hub with deduplication test passed")
+        
+    finally:
+        shutil.rmtree(temp_dir)
+
+
+def test_save_to_hub_all_duplicates():
+    """Test save_to_hub when all records are duplicates."""
+    from datetime import datetime
+    
+    temp_dir = tempfile.mkdtemp()
+    try:
+        hub_dir = Path(temp_dir) / 'hub'
+        
+        # Create initial data
+        df1 = pd.DataFrame([
+            {
+                'id': 'unique_id_001',
+                'ref_no': '2024.1000',
+                'source': 'FDA',
+                'date_registered': datetime(2024, 5, 20),
+                'product_type_raw': 'Fishery products',
+                'product_type': '수산물',
+                'category': '식품',
+                'product_name': 'Frozen Shrimp',
+                'origin_raw': 'Vietnam',
+                'origin': '베트남',
+                'notifying_country_raw': 'Germany',
+                'notifying_country': '독일',
+                'hazard_reason': 'Salmonella detected',
+                'analyzable': True,
+                'hazard_category': '미생물',
+                'tags': ['Shrimp', 'High Risk'],
+            },
+        ])
+        df1 = normalize_dataframe(df1)
+        
+        # Save first batch
+        count1 = save_to_hub(df1, hub_dir)
+        assert count1 == 1, "Should add 1 record"
+        
+        # Try to save the same data again
+        count2 = save_to_hub(df1, hub_dir)
+        assert count2 == 0, f"Should add 0 records (all duplicates), got {count2}"
+        
+        # Verify total records unchanged
+        hub_path = hub_dir / 'hub_data.parquet'
+        df_loaded = load_parquet(hub_path)
+        assert len(df_loaded) == 1, f"Should still have 1 record, got {len(df_loaded)}"
+        
+        print("✓ save_to_hub all duplicates test passed")
+        
+    finally:
+        shutil.rmtree(temp_dir)
+
+
+def test_save_to_hub_missing_id():
+    """Test save_to_hub with missing id column."""
+    from datetime import datetime
+    
+    temp_dir = tempfile.mkdtemp()
+    try:
+        hub_dir = Path(temp_dir) / 'hub'
+        
+        # Create data without id field
+        df = pd.DataFrame([
+            {
+                'ref_no': '2024.1000',
+                'source': 'FDA',
+                'date_registered': datetime(2024, 5, 20),
+                'product_name': 'Test Product',
+            },
+        ])
+        
+        # Should raise ValueError due to missing id
+        try:
+            save_to_hub(df, hub_dir)
+            assert False, "Should raise ValueError for missing id column"
+        except ValueError as e:
+            assert "id" in str(e).lower(), "Error should mention missing id column"
+        
+        print("✓ save_to_hub missing id test passed")
+        
+    finally:
+        shutil.rmtree(temp_dir)
+
+
+def test_save_to_hub_default_data_dir():
+    """Test save_to_hub with default data directory."""
+    from datetime import datetime
+    import os
+    
+    # Save current working directory
+    original_cwd = os.getcwd()
+    
+    temp_dir = tempfile.mkdtemp()
+    try:
+        # Change to temp directory
+        os.chdir(temp_dir)
+        
+        # Create test data
+        df = pd.DataFrame([
+            {
+                'id': 'unique_id_001',
+                'ref_no': '2024.1000',
+                'source': 'FDA',
+                'date_registered': datetime(2024, 5, 20),
+                'product_type_raw': 'Fishery products',
+                'product_type': '수산물',
+                'category': '식품',
+                'product_name': 'Frozen Shrimp',
+                'origin_raw': 'Vietnam',
+                'origin': '베트남',
+                'notifying_country_raw': 'Germany',
+                'notifying_country': '독일',
+                'hazard_reason': 'Salmonella detected',
+                'analyzable': True,
+                'hazard_category': '미생물',
+                'tags': ['Shrimp', 'High Risk'],
+            },
+        ])
+        df = normalize_dataframe(df)
+        
+        # Save with default data_dir (should be data/hub)
+        count = save_to_hub(df)
+        assert count == 1, "Should add 1 record"
+        
+        # Verify file exists at default location
+        default_path = Path('data/hub/hub_data.parquet')
+        assert default_path.exists(), "Hub file should exist at default location"
+        
+        print("✓ save_to_hub default data_dir test passed")
+        
+    finally:
+        # Restore original working directory
+        os.chdir(original_cwd)
+        shutil.rmtree(temp_dir)
+
+
 if __name__ == '__main__':
     print("Running Food Safety Intelligence System Tests")
     print("Testing 16 Standard Headers Schema Implementation")
@@ -313,6 +609,11 @@ if __name__ == '__main__':
         test_deduplication()
         test_parquet_save_load()
         test_complete_pipeline()
+        test_save_to_hub_new_file()
+        test_save_to_hub_with_deduplication()
+        test_save_to_hub_all_duplicates()
+        test_save_to_hub_missing_id()
+        test_save_to_hub_default_data_dir()
         
         print("=" * 60)
         print("\n✓ All tests passed!\n")
