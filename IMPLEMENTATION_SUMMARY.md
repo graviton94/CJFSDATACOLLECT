@@ -1,147 +1,68 @@
-# Implementation Summary
+# **📋 Implementation Summary & Roadmap**
 
-## Real-Time Food Safety Intelligence System
+Last Updated: 2026-01-20  
+Current Status: 🚧 Phase 2 In Progress: Ingestion & Schema Alignment  
+*현재는 '데이터 자동 수집' 구현 중이며, 수집된 데이터의 스키마 정합성을 맞추는 고난이도 작업을 앞두고 있습니다.*
 
-### ✅ Completed Implementation
+## **🏆 Project Roadmap (The Path to Final Goal)**
 
-This PR implements a complete real-time food safety intelligence system that meets all requirements specified in the problem statement.
+본 프로젝트는 단순한 크롤링 툴이 아니라, \*\*"가중치 기반 글로벌 식품안전 리스크 인텔리전스"\*\*를 지향합니다.
 
-### Requirements Met
+### **1️⃣ Raw Data Ingestion (Current Step 🔄)**
 
-1. ✅ **Three Primary Data Sources**
-   - EU RASFF (Rapid Alert System for Food and Feed) - Playwright-based web scraping
-   - FDA Import Alerts - With Country-Count CDC logic
-   - Korea MFDS (Ministry of Food and Drug Safety) - Open API integration
+* **목표:** 지정된 모든 소스(API, Web)로부터 완전한 Raw Data를 끊김 없이 가져오는 자동화 파이프라인 구축.  
+* **대상:** MFDS(API), FDA(Web), RASFF(Web), ImpFood(Web).  
+* **상태:** 파이썬 모듈 구현 완료, 실제 데이터 적재 및 안정성 테스트 진행 중.
 
-2. ✅ **Unified Parquet Schema**
-   - Normalized data model with 16 standardized fields
-   - Strict schema validation before storage
-   - Support for all three data sources in single format
+### **2️⃣ Schema Alignment & Transformation (The Hardest Part 🔥)**
 
-3. ✅ **Technology Stack**
-   - Python 3.10+ compatible (tested with 3.12)
-   - Pandas for data manipulation
-   - Playwright for web scraping
-   - Streamlit for interactive dashboard
-   - PyArrow for Parquet storage
+* **목표:** 자동 수집된 데이터가 13개 표준 스키마(Unified Schema)의 적절한 셀에 정확히 배분되었는지 전수 검증.  
+* **핵심 작업:**  
+  * 규칙에 맞지 않게 들어온 데이터 식별 (Anomaly Detection).  
+  * 비정형 텍스트(예: FDA Reason, ImpFood 위반내용)를 표준 항목으로 변환하는 정제 로직 고도화.  
+  * **Note:** 가장 시간이 많이 소요되고 정교함이 요구되는 단계.
 
-4. ✅ **Data Quality Features**
-   - Deduplication using SHA256-based unique keys
-   - Daily scheduled ingestion
-   - Strict schema validation
-   - Data quality scoring (0-1 scale)
+### **3️⃣ Master Data Management (Ready ✅)**
 
-### Key Features
+* **목표:** 자동 매핑이 실패하거나 새로운 유형이 발생했을 때, 사람이 개입하여 기준정보(백서)를 업데이트하는 체계.  
+* **구현:** Streamlit '기준정보 관리' 탭 (CRUD 기능 완료).
 
-#### Data Collection
-- **EU RASFF**: Playwright-based scraper with fallback to mock data
-- **FDA Import Alerts**: Country-Count CDC logic for tracking country-level risk trends
-- **Korea MFDS**: Open API integration with graceful fallback
+### **4️⃣ Advanced Visualization**
 
-#### Data Processing
-- Automatic deduplication prevents duplicate records
-- Schema normalization ensures consistency
-- Validation before storage maintains data quality
-- Parquet format with Snappy compression
+* **목표:** 정제된 데이터를 바탕으로 다양한 필터링(기간, 국가, 위해요소 등)을 통해 현황을 조회하는 메뉴 생성.  
+* **계획:** 차트 고도화, 동적 테이블, 드릴다운 리포트.
 
-#### Visualization
-- Interactive Streamlit dashboard
-- Real-time metrics and KPIs
-- Multiple chart types (pie, bar, line, timeline)
-- Filtering by source, risk level, and time range
-- CSV export functionality
+### **5️⃣ Risk Intelligence Dashboard (Final Goal 🏆)**
 
-#### Automation
-- Daily scheduled ingestion
-- Configurable run times
-- Error handling and logging
-- Both one-time and scheduled modes
+* **목표:** 단순 통계를 넘어 '위험'을 식별.  
+* **기능:** 가중치 알고리즘 적용, 글로벌 이슈 식품유형/위험요소 실시간 랭킹 및 경보 시스템.
 
-### Files Created
+## **🚦 Module Status Board**
 
-**Core System:**
-- `src/schema.py` - Unified data schema (155 lines)
-- `src/scheduler.py` - Daily ingestion scheduler (138 lines)
-- `src/collectors/rasff_scraper.py` - EU RASFF scraper (178 lines)
-- `src/collectors/fda_collector.py` - FDA collector with CDC logic (224 lines)
-- `src/collectors/mfds_collector.py` - Korea MFDS API collector (257 lines)
-- `src/utils/deduplication.py` - Deduplication utilities (100 lines)
-- `src/utils/storage.py` - Parquet storage utilities (104 lines)
+### **1\. Data Collectors (Ingestion Engine)**
 
-**Dashboard & UI:**
-- `app.py` - Streamlit dashboard (264 lines)
+| Source | Type | Status | Note |
+| :---- | :---- | :---- | :---- |
+| **🇰🇷 MFDS** | API | ✅ **Stable** | I2620, I0490 정규화 완료. |
+| **🇺🇸 FDA** | CDC / Web | 🔄 **Implemented** | 변화 감지 로직 적용됨. 스키마 매핑 검증 필요. |
+| **🇪🇺 RASFF** | Playwright | 🔄 **Refining** | 타임아웃 이슈 해결 및 HTML 파싱 구조 최적화 필요. |
+| **🇰🇷 ImpFood** | Playwright | 🔄 **Implemented** | DOM 구조 파싱 로직 구현됨. 실제 적재 테스트 필요. |
 
-**Configuration:**
-- `requirements.txt` - Python dependencies
-- `config/config.yaml` - System configuration
-- `.env.example` - Environment variables template
-- `.gitignore` - Git ignore rules
+### **2\. Core Logic & Storage**
 
-**Documentation:**
-- `README.md` - Comprehensive documentation (327 lines)
-- `quickstart.sh` - Quick start script
+* \[x\] **Unified Schema:** 13개 표준 컬럼 정의 완료. (src/schema.py)  
+* \[x\] **Reference Loader:** 기준정보(품목/시험항목) 자동 생성기 구현 완료.  
+* \[x\] **Scheduler:** 4대 정보원 통합 스케줄링 구조 완성.  
+* \[ \] **Data Validation:** 수집 후 스키마 정합성 검증 로직 (To Do).
 
-**Testing:**
-- `tests/test_system.py` - Comprehensive test suite (150 lines)
+### **3\. User Interface (Streamlit)**
 
-### Test Results
+* \[x\] **Basic Dashboard:** 기본 프레임워크 및 데이터 로드 구현.  
+* \[x\] **Admin Tab:** 기준정보 파일(Parquet) 수정 기능 구현.  
+* \[ \] **Advanced Filter:** 상세 검색 및 복합 필터링 기능 (To Do).
 
-All tests passing:
-```
-✓ Unique key generation test passed
-✓ Schema validation test passed
-✓ Deduplication test passed
-✓ Data pipeline test passed - 20 records from 3 sources
-```
+## **📝 Immediate Next Actions**
 
-### Security Review
-
-CodeQL analysis: **0 vulnerabilities found**
-
-### Code Quality
-
-- Python 3.9+ compatible type hints
-- Comprehensive error handling
-- Structured logging with Loguru
-- Clear separation of concerns
-- Modular architecture
-- Extensive documentation
-
-### Demo Capabilities
-
-The system includes mock data generation for demonstration without requiring:
-- Live access to EU RASFF portal
-- FDA Import Alerts system access
-- Korea MFDS API credentials
-
-This allows immediate testing and validation of the complete pipeline.
-
-### Next Steps for Production
-
-To use in production, implement:
-
-1. **EU RASFF**: Add specific selectors for actual portal structure
-2. **FDA Import Alerts**: Integrate with official FDA data source
-3. **Korea MFDS**: Add actual API key via environment variable
-
-All TODOs are clearly marked in the code.
-
-### Performance
-
-- Efficient Parquet storage with Snappy compression
-- Incremental data collection (only new records)
-- Fast deduplication using hash-based keys
-- Optimized Pandas operations
-- Streamlit caching for dashboard
-
-### Metrics
-
-- **Total Lines of Code**: ~1,800
-- **Number of Files**: 18
-- **Test Coverage**: All major components tested
-- **Security Vulnerabilities**: 0
-- **Code Review Issues Addressed**: 5/5
-
----
-
-**Status**: ✅ Ready for review and merge
+1. **ImpFood & RASFF 안정화:** 로컬 환경에서 실제 데이터가 hub\_data.parquet에 누락 없이 쌓이는지 확인.  
+2. **Schema Audit:** 수집된 데이터(Parquet)를 열어 top\_level\_product\_type이나 hazard\_category가 None이나 엉뚱한 값으로 들어간 케이스 전수 조사.  
+3. **Refine Lookup Logic:** 조사 결과를 바탕으로 매핑 알고리즘(이름 기반 매핑) 수정 및 예외 처리 규칙 추가.

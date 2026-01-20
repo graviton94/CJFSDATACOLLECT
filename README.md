@@ -1,136 +1,111 @@
-# 🛡️ CJFSDATACOLLECT: Global Food Safety Intelligence
+# 🛡️ Global Food Safety Intelligence Platform (CJFSDATACOLLECT)
 
 [![Python](https://img.shields.io/badge/Python-3.10+-blue.svg)](https://www.python.org/)
 [![Streamlit](https://img.shields.io/badge/Streamlit-App-ff4b4b.svg)](https://streamlit.io/)
 [![Status](https://img.shields.io/badge/Status-Active_Development-green)]()
 [![Vibe Coding](https://img.shields.io/badge/Built_with-Vibe_Coding-purple)]()
 
-**CJFSDATACOLLECT** is a real-time food safety intelligence system that automates the tracking, aggregation, and visualization of global risk data. It monitors hazardous food recalls and import refusals from the US, EU, and South Korea to support proactive risk management.
+**CJFSDATACOLLECT**는 전 세계 식품 위해 정보를 실시간으로 수집, 정제, 시각화하는 통합 인텔리전스 플랫폼입니다.
+한국(MFDS/ImpFood), 미국(FDA), 유럽(RASFF)의 데이터를 단일 스키마(Unified Schema)로 표준화하여 제공합니다.
 
 ---
 
-## 🌍 Data Sources
+## **🎯 Project Goals (Roadmap)**
 
-We aggregate risk data from three primary intelligence sources:
+본 프로젝트의 최종 완성을 향한 여정입니다.
 
-| Source | Region | Type | Method | Frequency |
-|:---:|:---:|:---:|:---|:---:|
-| **EU RASFF** | 🇪🇺 Europe | Web (SPA) | `Playwright` Dynamic Scraping | Daily |
-| **US FDA** | 🇺🇸 USA | Web (Static) | `Requests` + **CDC (Count Change Detection)** | Daily |
-| **KR MFDS** | 🇰🇷 Korea | Open API | `REST API` (JSON) | Daily |
+1. **Data Ingestion Automation (Current Stage ✅)**  
+   * 지정된 모든 입력 방식(API, HTML 크롤링)에 대해 완전한 Raw Data 수집 자동화.  
+   * 4대 정보원: MFDS(API), FDA(CDC), RASFF(Playwright), ImpFood(Playwright).  
+2. **Schema Normalization & Smart Lookup (Current Stage ✅)**  
+   * 수집된 이종 데이터를 13개 표준 컬럼으로 자동 정렬.  
+   * 기준정보(Reference Data)를 활용하여 품목 유형 및 위해 분류 자동 매핑.  
+3. **Master Data Management (Completed ✅)**  
+   * 데이터 정합성을 위해 사람이 직접 기준정보(백서)를 수정/관리할 수 있는 Streamlit Admin 메뉴 구축.  
+4. **Advanced Visualization (Next Step 🚧)**  
+   * Streamlit에서 다양한 필터링 조건으로 현황을 조회하는 차트/테이블 메뉴 고도화.  
+5. **Global Risk Dashboard (Final Goal 🏆)**  
+   * 가중치(Weighting) 알고리즘을 적용하여, 현재 글로벌 이슈 식품 유형과 위험 요소를 실시간으로 파악하는 **인텔리전스 대시보드** 완성.
+
+---
 
 ## 🚀 Key Features
 
-- **Smart CDC (Change Data Capture):** Minimizes FDA traffic by tracking country-level alert counts and only scraping details when counts increase.
-- **Unified Parquet Schema:** Normalizes diverse data fields (e.g., product name, hazard category) into a single, optimized Parquet database.
-- **Automated Deduplication:** Uses `SHA256` hashing of source URLs/IDs to prevent duplicate records.
-- **Resilient Ingestion:** Includes **Mock Data** generation for testing pipelines without external network dependencies.
-- **Vibe Coding Workflow:** Built using Gemini CLI to accelerate logic implementation and maintain high adaptability.
-- **Interactive Dashboard:** Streamlit-based UI for filtering and visualizing risk trends by country, product, and hazard type.
+### 1. Multi-Source Data Ingestion
+- **🇰🇷 MFDS (식약처):**
+  - `I2620`: 국내식품 부적합 정보
+  - `I0490`: 회수판매중지 정보
+- **🇰🇷 ImpFood (수입식품정보마루):**
+  - 수입식품 부적합 정보 (Playwright DOM Scraping)
+- **🇺🇸 FDA (미국):**
+  - Import Alerts (국가별 차단 리스트 CDC 수집)
+- **🇪🇺 RASFF (유럽연합):**
+  - 식품 및 사료 신속 경보 시스템 (Playwright Scraping)
+
+### 2. Intelligent Data Processing
+- **Unified Schema:** 모든 소스를 13개 표준 컬럼으로 정규화.
+- **Smart Lookup:** 기준정보(Parquet)를 활용하여 품목 유형(Hierarchy) 및 위해 분류(Category) 자동 매핑.
+- **Deduplication:** 소스별 고유 ID를 기반으로 중복 데이터 자동 제거.
+
+### 3. Interactive Dashboard
+- **Streamlit 기반 UI:** 데이터 검색, 필터링, 시각화(Plotly).
+- **Master Data Management:** 기준정보 파일(Parquet) 직접 조회 및 수정 기능.
+- **Export:** 한글 깨짐 없는(UTF-8-SIG) CSV 다운로드 지원.
+
+## 🛠️ Tech Stack
+
+- **Language:** Python 3.9+
+- **Data Collection:** `requests`, `playwright`, `BeautifulSoup`
+- **Data Processing:** `pandas`, `pyarrow`
+- **Storage:** Parquet (Local File System)
+- **Visualization:** `streamlit`, `plotly`
+- **Scheduler:** `schedule` (Lightweight Job Scheduling)
 
 ---
 
-## 🛠️ Installation & Setup
+## 📥 Installation & Usage
 
-### Prerequisites
-- Python 3.10+
-- Node.js (for Gemini CLI, optional)
-
-### 1. Clone the repository
+### 1. Setup Environment
 ```bash
-git clone [https://github.com/YOUR_ORG/CJFSDATACOLLECT.git](https://github.com/YOUR_ORG/CJFSDATACOLLECT.git)
-cd CJFSDATACOLLECT
-```
-
-### 2. Environment Setup
-```bash
-# Create Virtual Environment
+# 가상환경 생성 및 활성화
 python -m venv .venv
+source .venv/bin/activate  # Windows: .venv\Scripts\activate
 
-# Activate (Mac/Linux)
-source .venv/bin/activate
-# Activate (Windows)
-# .venv\Scripts\activate
-
-# Install Dependencies
+# 패키지 설치
 pip install -r requirements.txt
 
-# Install Browsers for Playwright (Required for RASFF)
-playwright install chromium
+# Playwright 브라우저 설치 (필수)
+playwright install
 ```
-
-### 3. Configuration
-- Create a .env file in the root directory:
+### 2. Environment Variables
+Create .env file:
 ```Ini, TOML
 KOREA_FOOD_API_KEY=your_api_key_here
-# Optional: Set to 'True' to use mock data for testing
-USE_MOCK_DATA=False
 ```
+### 3. Run Scheduler (Data Collection)
+```Bash
+# 1회 즉시 실행 (테스트용)
+python src/scheduler.py --mode once
 
-### 🔧 Usage
-- 📊 Run Dashboard
-  Launch the analytics interface:
-```bash
+# 매일 정해진 시간에 실행
+python src/scheduler.py --mode schedule --time 09:00
+```
+### 4. Run Dashboard
+```Bash
 streamlit run app.py
 ```
 
-- 🤖 Run Data Collectors
-  You can run collectors individually or via the main scheduler.
-
-### Option A: Run All (Scheduler)
-```bash
-# Run once for the last 7 days of data
-python src/main_scheduler.py --mode once --days 7
-
-# Run in schedule mode (Daily loop)
-python src/main_scheduler.py --mode schedule --time "09:00"
-```
-
-```bash
-# Test EU RASFF
-python src/collectors/rasff_scraper.py
-
-# Test Korea MFDS
-python src/collectors/mfds_collector.py
-```
-
-### Project Structure
+## 📂 Project Structure
 ```plaintext
-CJFSDATACOLLECT/
-├── .env                     # API Keys & Config
+cjfsdatacollect/
+├── app.py                  # Streamlit Dashboard Entry Point
 ├── data/
-│   ├── raw/                 # Temporary raw downloads (JSON/HTML)
-│   ├── hub/                 # Final DB (hub_data.parquet)
-│   └── state/               # State files (e.g., fda_last_counts.json)
+│   ├── hub/                # Collected Data (hub_data.parquet)
+│   └── reference/          # Master Data (Product/Hazard Codes)
 ├── src/
-│   ├── collectors/          # Ingestion Logic
-│   │   ├── rasff_scraper.py # Playwright
-│   │   ├── fda_scraper.py   # Requests + CDC
-│   │   └── mfds_collector.py# REST API
-│   ├── processors/          # ETL Logic
-│   │   ├── schema.py        # Parquet Schema Definition
-│   │   └── normalizer.py    # Data Cleaning
-│   └── utils/               # Logger & Helpers
-├── app.py                   # Streamlit Entry Point
-└── requirements.txt
+│   ├── collectors/         # Source-specific Scrapers (MFDS, FDA, RASFF, ImpFood)
+│   ├── utils/              # Storage, Deduplication, Reference Loaders
+│   ├── schema.py           # Unified Schema Definition & Validation
+│   └── scheduler.py        # Central Job Scheduler
+└── tests/                  # Unit & Integration Tests
 ```
-
-### 📊 Data Schema
-All incoming data is normalized to this unified structure (hub_data.parquet):
-Field,Type,Description
-record_id,string,Unique Key (SHA256 of Source + Ref_No)
-source,string,"EU_RASFF, FDA_IMPORT, KR_MFDS"
-date_registered,datetime,Standardized Date (YYYY-MM-DD)
-product_name,string,Normalized Product Name
-hazard_category,string,"e.g., ""Microbiological"", ""Chemical"""
-risk_decision,string,"e.g., ""Recall"", ""Reject"", ""Alert"""
-origin_country,string,Standardized Country Name
-raw_data,json,Original full data (for backup)
-
-### 🤝 Contributing (Vibe Coding)
-This project embraces AI-Assisted Vibe Coding.
-  1. Context First: Always provide the ARCHITECTURE.md context when prompting Gemini/Copilot.
-  2. Review Logic: AI writes the code, humans verify the logic and security.
-  3. Mock First: When adding a new source, build a Mock Class first to ensure pipeline stability.
-
-License: MIT | Maintainer: Food Safety Intelligence Team

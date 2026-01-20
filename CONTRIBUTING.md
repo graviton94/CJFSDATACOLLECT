@@ -1,24 +1,34 @@
 # 🤝 Contributing to CJFSDATACOLLECT
 
-This project embraces **"Vibe Coding"**. We use AI agents (Gemini CLI, Copilot) to generate code but enforce strict verification standards.
+## 1. Development Workflow
 
-## 🤖 AI Vibe Coding Guidelines
-1. **Context is King:** Always load `ARCHITECTURE.md` into your AI context before asking for major changes.
-2. **Review First:** Do not blindly commit AI-generated code. Verify imports and logic errors.
-3. **Modular Prompts:** Ask the AI to build small, testable functions (e.g., "Write a parser for this specific HTML table") rather than the whole system at once.
+1.  **Fork & Clone** the repository.
+2.  **Install Dependencies:**
+    ```bash
+    pip install -r requirements.txt
+    playwright install
+    ```
+3.  **Create a Branch:** `feature/your-feature-name` or `fix/issue-number`.
 
-## 📝 Coding Standards
-- **Language:** Python 3.10+
-- **Style:** PEP 8 (mostly). Snake_case for variables/functions.
-- **Docstrings:** Required for all public functions (Google Style).
-- **Type Hinting:** Strongly encouraged (e.g., `def scrape(url: str) -> pd.DataFrame:`).
+## 2. Adding a New Collector
 
-## 🔄 Workflow
-1. Create a feature branch: `git checkout -b feature/rasff-scraper`
-2. Implement logic (using Gemini CLI).
-3. Run local tests: `pytest` (or manual run).
-4. Commit with descriptive messages: `feat: add playwright support for rasff`
+If you want to add a new data source (e.g., China CFDA):
 
-## 🚫 Anti-Patterns
-- Hardcoding API keys (Use `.env`).
-- Committing heavy raw data files (Add `*.csv`, `*.json` to `.gitignore`, keep only `parquet` or sample data).
+1.  Create `src/collectors/china_collector.py`.
+2.  Implement the `collect()` or `scrape()` method.
+3.  Ensure the output DataFrame strictly follows `src.schema.UNIFIED_SCHEMA`.
+4.  Register the collector in `src/scheduler.py`.
+
+## 3. Schema Rules
+
+- **DO NOT** add new columns to the final output without team discussion.
+- All collectors **MUST** map their raw data to the 13 unified columns.
+- Use `src.schema.validate_schema(df)` before returning data.
+
+## 4. Testing
+
+Run tests before pushing:
+```bash
+# Run all tests
+pytest tests/
+```
