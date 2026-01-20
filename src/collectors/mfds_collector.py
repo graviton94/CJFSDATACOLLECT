@@ -250,27 +250,29 @@ class MFDSCollector:
         return pd.DataFrame(all_records)
 
     def _load_country_reference(self):
-        """국가명 마스터 Parquet -> 딕셔너리 변환"""
-        file_path = self.REF_DIR / "country_master.parquet"
+        """국가명 마스터 TSV -> 딕셔너리 변환"""
+        file_path = self.REF_DIR / "country_master.tsv"
         if not file_path.exists():
-            print(f"   ⚠️ Warning: country_master.parquet 파일이 없습니다.")
+            print(f"   ⚠️ Warning: country_master.tsv 파일이 없습니다.")
             return {}
         
         try:
-            df = pd.read_parquet(file_path)
+            # TSV 파일을 읽기 (탭 구분자)
+            df = pd.read_csv(file_path, sep='\t', encoding='utf-8')
+            
             # 국가명(한글)을 키로, 영문명+ISO를 값으로 하는 딕셔너리 생성
             country_dict = {}
             for _, row in df.iterrows():
-                kor_name = row.get('country_name_kor', '')
-                if kor_name:
+                kor_name = row.get('국가명(국문)', '')
+                if kor_name and pd.notna(kor_name):
                     country_dict[kor_name] = {
-                        'eng': row.get('country_name_eng', ''),
-                        'iso_2': row.get('iso_2', ''),
-                        'iso_3': row.get('iso_3', '')
+                        'eng': row.get('국가명(영문)', ''),
+                        'iso_2': row.get('ISO(2자리)', ''),
+                        'iso_3': row.get('ISO(3자리)', '')
                     }
             return country_dict
         except Exception as e:
-            print(f"   ❌ country_master.parquet 로드 실패: {e}")
+            print(f"   ❌ country_master.tsv 로드 실패: {e}")
             return {}
 
     def _normalize_country_name(self, raw_country):
