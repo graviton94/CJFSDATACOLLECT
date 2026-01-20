@@ -10,6 +10,25 @@
 
 ---
 
+## **🎯 Project Goals (Roadmap)**
+
+본 프로젝트의 최종 완성을 향한 여정입니다.
+
+1. **Data Ingestion Automation (Current Stage ✅)**  
+   * 지정된 모든 입력 방식(API, HTML 크롤링)에 대해 완전한 Raw Data 수집 자동화.  
+   * 4대 정보원: MFDS(API), FDA(CDC), RASFF(Playwright), ImpFood(Playwright).  
+2. **Schema Normalization & Smart Lookup (Current Stage ✅)**  
+   * 수집된 이종 데이터를 13개 표준 컬럼으로 자동 정렬.  
+   * 기준정보(Reference Data)를 활용하여 품목 유형 및 위해 분류 자동 매핑.  
+3. **Master Data Management (Completed ✅)**  
+   * 데이터 정합성을 위해 사람이 직접 기준정보(백서)를 수정/관리할 수 있는 Streamlit Admin 메뉴 구축.  
+4. **Advanced Visualization (Next Step 🚧)**  
+   * Streamlit에서 다양한 필터링 조건으로 현황을 조회하는 차트/테이블 메뉴 고도화.  
+5. **Global Risk Dashboard (Final Goal 🏆)**  
+   * 가중치(Weighting) 알고리즘을 적용하여, 현재 글로벌 이슈 식품 유형과 위험 요소를 실시간으로 파악하는 **인텔리전스 대시보드** 완성.
+
+---
+
 ## 🚀 Key Features
 
 ### 1. Multi-Source Data Ingestion
