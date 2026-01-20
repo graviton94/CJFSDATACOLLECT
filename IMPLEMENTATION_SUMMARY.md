@@ -1,33 +1,43 @@
-# 🤝 Contributing to CJFSDATACOLLECT
+# ✅ Implementation Summary
 
-## 1. Development Workflow
+**Last Updated:** 2026-01-20
+**Status:** Feature Complete / Refactoring Phase
 
-1.  **Fork & Clone** the repository.
-2.  **Install Dependencies:**
-    ```bash
-    pip install -r requirements.txt
-    playwright install
-    ```
-3.  **Create a Branch:** `feature/your-feature-name` or `fix/issue-number`.
+---
 
-## 2. Adding a New Collector
+## 🟢 Completed Modules
 
-If you want to add a new data source (e.g., China CFDA):
+### 1. Data Collectors
+- [x] **MFDS Collector:** API Integration (I2620, I0490) complete.
+- [x] **FDA Collector:** CDC (Change Data Capture) logic implemented.
+- [x] **RASFF Scraper:** Playwright integration for EU data complete.
+- [x] **ImpFood Scraper:** Playwright DOM scraper for Korean Imported Food portal complete.
 
-1.  Create `src/collectors/china_collector.py`.
-2.  Implement the `collect()` or `scrape()` method.
-3.  Ensure the output DataFrame strictly follows `src.schema.UNIFIED_SCHEMA`.
-4.  Register the collector in `src/scheduler.py`.
+### 2. Core Logic
+- [x] **Unified Schema:** 13-column strict enforcement implemented.
+- [x] **Deduplication:** Logic based on `source_detail` (ID) implemented.
+- [x] **Scheduler:** Centralized execution pipeline ready.
 
-## 3. Schema Rules
+### 3. User Interface
+- [x] **Dashboard:** Search, Filter, Metrics, Charts implemented.
+- [x] **Master Data Admin:** Edit/Save functionality for Reference Data.
+- [x] **UX Improvements:** Korean headers in tables, UTF-8-SIG CSV export.
 
-- **DO NOT** add new columns to the final output without team discussion.
-- All collectors **MUST** map their raw data to the 13 unified columns.
-- Use `src.schema.validate_schema(df)` before returning data.
+---
 
-## 4. Testing
+## 🟡 In Progress / Refactoring
 
-Run tests before pushing:
-```bash
-# Run all tests
-pytest tests/
+### 1. Lookup Logic Refactor
+- **Goal:** Change lookup matching from **Code-based** to **Name-based**.
+- **Status:** Logic updated in `mfds_collector.py` and `ImpFood.py`. Testing verification needed.
+
+### 2. Performance Optimization
+- **Goal:** Optimize Playwright scrapers (RASFF, ImpFood).
+- **Action:** Implement `route.abort()` for images/fonts to reduce timeouts.
+
+---
+
+## 🔴 Known Issues / Backlog
+
+- **Reference Data Quality:** Some raw product names from APIs do not exactly match the Master Data, leading to `None` in hierarchy columns. (Fuzzy matching needed in future).
+- **RASFF Timeout:** Occasional timeouts due to EU server latency.
