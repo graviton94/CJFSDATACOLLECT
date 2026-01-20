@@ -33,7 +33,7 @@ def create_mock_product_data():
         },
         {
             'KOR_NM': '냉이',
-            'ENG_NM': 'Shepherd\'s Purse',
+            'ENG_NM': "Shepherd's Purse",
             'HTRK_PRDLST_NM': '농산물',
             'GR_NM': '농산물',
             'HRRK_PRDLST_NM': '채소류',
