@@ -9,7 +9,7 @@ This system aggregates risk data (recalls, import refusals, alerts) from three d
 2.  **US FDA Import Alerts** (USA)
 3.  **KR MFDS** (South Korea)
 
-## 🛠️ Tech Stack &amp; Standards
+## 🛠️ Tech Stack & Standards
 -   **Language:** Python 3.10+
 -   **Dashboard:** Streamlit (UI/UX)
 -   **Data Processing:** Pandas, PyArrow (Parquet storage)
@@ -22,14 +22,14 @@ This system aggregates risk data (recalls, import refusals, alerts) from three d
 ## 🧠 Behavioral Guidelines (How to Act)
 
 ### 1. Architecture-First Thinking
--   Before writing code, always consider the **ETL flow**: Extract -&gt; Normalize -&gt; Deduplicate -&gt; Load.
+-   Before writing code, always consider the **ETL flow**: Extract -> Normalize -> Deduplicate -> Load.
 -   Do **NOT** hardcode data schemas in collectors. Always import schema definitions from `src.schema`.
 -   Respect the folder structure:
     -   `src/collectors/`: Ingestion logic only.
     -   `src/processors/`: Cleaning and normalization logic.
     -   `src/utils/`: Shared helpers (logging, storage).
 
-### 2. Resilience &amp; Testing
+### 2. Resilience & Testing
 -   **Mock First:** When implementing a new scraper, always assume the external site might be down. Write logic that can fallback to `mock data` or local files for testing.
 -   **Error Handling:** Never let a single scraper failure crash the entire scheduler. Use `try-except` blocks and log errors explicitly.
 
