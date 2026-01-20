@@ -20,6 +20,7 @@ PROJECT_ROOT = Path(__file__).parent
 sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.scheduler import DataIngestionScheduler
+from src.schema import DISPLAY_HEADERS
 
 # Page configuration
 st.set_page_config(
@@ -132,13 +133,21 @@ def render_master_data_tab():
         st.subheader("✏️ 데이터 편집기")
         st.caption("행 수정이 가능합니다. 편집 후 반드시 '저장' 버튼을 클릭하세요.")
         
+        # Apply Korean headers if columns match UNIFIED_SCHEMA
+        display_df = df_display.copy()
+        display_df = display_df.rename(columns=DISPLAY_HEADERS)
+        
         edited_df = st.data_editor(
-            df_display,
+            display_df,
             num_rows="dynamic",
             use_container_width=True,
             height=500,
             key=f"editor_{selected_name}"
         )
+        
+        # Convert back to English column names for saving
+        reverse_headers = {v: k for k, v in DISPLAY_HEADERS.items()}
+        edited_df = edited_df.rename(columns=reverse_headers)
         
         # 5. Save logic
         st.markdown("---")
@@ -291,11 +300,29 @@ def render_dashboard(df: pd.DataFrame):
 
     # Data Table
     st.markdown("### 🔍 상세 데이터 (Raw Data)")
+    
+    # Prepare display dataframe with Korean headers
+    df_display = df_filtered.drop(columns=['date_parsed'], errors='ignore').copy()
+    df_display = df_display.rename(columns=DISPLAY_HEADERS)
+    
     st.dataframe(
-        df_filtered.drop(columns=['date_parsed'], errors='ignore'),
+        df_display,
         use_container_width=True,
         hide_index=True
     )
+    
+    # CSV Download Button
+    st.markdown("---")
+    col_download1, col_download2 = st.columns([1, 3])
+    with col_download1:
+        csv_data = df_display.to_csv(index=False).encode('utf-8-sig')
+        st.download_button(
+            label="📥 데이터 다운로드 (CSV)",
+            data=csv_data,
+            file_name=f"food_safety_data_{datetime.now().strftime('%Y%m%d')}.csv",
+            mime="text/csv",
+            type="primary"
+        )
 
 
 def main():
