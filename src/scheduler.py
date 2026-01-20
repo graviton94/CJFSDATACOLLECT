@@ -14,6 +14,7 @@ if __name__ == '__main__':
 from src.collectors.mfds_collector import MFDSCollector
 from src.collectors.fda_collector import FDACollector
 from src.collectors.rasff_scraper import RASFFCollector
+from src.collectors.impfood_scraper import ImpFoodScraper
 
 # Import Utils
 from src.utils.deduplication import merge_and_deduplicate
@@ -34,7 +35,8 @@ class DataIngestionScheduler:
         self.collectors = {
             "MFDS": MFDSCollector(),
             "FDA": FDACollector(),
-            "RASFF": RASFFCollector()
+            "RASFF": RASFFCollector(),
+            "ImpFood": ImpFoodScraper()
         }
 
     def run_single_collector(self, name):
@@ -44,8 +46,8 @@ class DataIngestionScheduler:
             collector = self.collectors[name]
             
             # 수집 실행 (각 클래스의 메인 메서드 호출)
-            if name == "RASFF":
-                df = collector.scrape() # RASFF는 scrape() 메서드 사용
+            if name in ["RASFF", "ImpFood"]:
+                df = collector.scrape() # RASFF와 ImpFood는 scrape() 메서드 사용
             else:
                 df = collector.collect() # 나머지는 collect() 사용
                 
