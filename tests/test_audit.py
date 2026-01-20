@@ -78,7 +78,7 @@ def create_sample_data():
             'product_name': 'Black Pepper',
             'origin_country': 'India',
             'notifying_country': 'USA',
-            'hazard_category': 'Chemical',
+            'hazard_category': 'Microbiological',
             'hazard_item': 'Salmonella',
             'analyzable': True,
             'interest_item': True

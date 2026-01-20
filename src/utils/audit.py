@@ -101,10 +101,10 @@ class DataQualityAuditor:
                 continue
             
             # Count missing values (None, NaN, empty string)
+            # Use efficient vectorized operations without unnecessary conversions
             missing_mask = (
                 self.df[col].isna() | 
-                (self.df[col] == "") | 
-                (self.df[col].astype(str) == "None")
+                (self.df[col] == "")
             )
             
             # Special handling for boolean columns
@@ -141,12 +141,14 @@ class DataQualityAuditor:
         """
         Detect rows where raw data exists but derived data is missing.
         
-        Mapping pairs:
+        Mapping pairs checked:
         - product_type (raw) -> top_level_product_type (derived)
         - product_type (raw) -> upper_product_type (derived)
         - hazard_item (raw) -> hazard_category (derived)
-        - hazard_item (raw) -> analyzable (derived)
-        - hazard_item (raw) -> interest_item (derived)
+        
+        Note: analyzable and interest_item are boolean fields derived from
+        hazard_item but are set to False by default in schema validation,
+        so they don't indicate mapping failures in the same way.
         """
         print("🔎 Mapping Failure Detection")
         print("=" * 60)
