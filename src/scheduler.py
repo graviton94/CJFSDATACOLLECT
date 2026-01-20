@@ -16,12 +16,13 @@ from dotenv import load_dotenv
 # Load environment variables at module level
 load_dotenv()
 
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# Ensure project root is on path so src.* imports resolve under Streamlit
+PROJECT_ROOT = Path(__file__).parent.parent
+sys.path.insert(0, str(PROJECT_ROOT))
 
-from collectors.rasff_scraper import RASFFScraper
-from collectors.fda_collector import FDACollector
-from collectors.mfds_collector import MFDSCollector
+from src.collectors.rasff_scraper import RASFFScraper
+from src.collectors.fda_collector import FDACollector
+from src.collectors.mfds_collector import MFDSCollector
 
 
 class DataIngestionScheduler:

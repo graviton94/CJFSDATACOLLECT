@@ -17,10 +17,11 @@ import yaml
 # Load environment variables
 load_dotenv()
 
-# Add src directory to path
-sys.path.insert(0, str(Path(__file__).parent / 'src'))
+# Ensure project root is on the Python path so src imports resolve
+PROJECT_ROOT = Path(__file__).parent
+sys.path.insert(0, str(PROJECT_ROOT))
 
-from scheduler import DataIngestionScheduler
+from src.scheduler import DataIngestionScheduler
 
 
 # Page configuration
