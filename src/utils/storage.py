@@ -167,3 +167,91 @@ def load_recent_data(data_dir: Union[str, Path], days: int = 30) -> pd.DataFrame
     except Exception as e:
         logger.error(f"Error filtering recent data: {e}")
         return df
+
+
+def save_to_hub(df: pd.DataFrame, data_dir: Union[str, Path] = None) -> int:
+    """
+    Save DataFrame to hub with deduplication based on record_id (id field).
+    
+    This function combines loading, deduplication, and saving in a single operation:
+    1. Loads existing data from data/hub/hub_data.parquet (if exists)
+    2. Filters out rows from new DataFrame where id already exists
+    3. Appends only new unique rows to existing data
+    4. Saves back to hub_data.parquet with snappy compression
+    5. Returns count of newly added records
+    
+    Args:
+        df: New DataFrame to save (must contain 'id' field as record_id)
+        data_dir: Directory path to hub_data.parquet (default: data/hub)
+        
+    Returns:
+        Count of newly added records
+        
+    Raises:
+        ValueError: If DataFrame doesn't contain 'id' column or fails schema validation
+    """
+    # Validate input DataFrame has id column (record_id)
+    if 'id' not in df.columns:
+        raise ValueError("DataFrame must contain 'id' column (record_id)")
+    
+    # Validate schema before processing
+    is_valid, errors = validate_data(df)
+    if not is_valid:
+        logger.error(f"Schema validation failed: {errors}")
+        raise ValueError(f"Schema validation failed: {errors}")
+    
+    # Set default data_dir if not provided
+    if data_dir is None:
+        data_dir = Path("data/hub")
+    else:
+        data_dir = Path(data_dir)
+    
+    # Ensure directory exists
+    data_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Full path to hub_data.parquet
+    hub_path = data_dir / 'hub_data.parquet'
+    
+    # Load existing data if file exists
+    existing_df = pd.DataFrame()
+    existing_ids = set()
+    
+    if hub_path.exists():
+        try:
+            existing_df = pd.read_parquet(hub_path, engine='pyarrow')
+            existing_ids = set(existing_df['id'].tolist())
+            logger.info(f"Loaded {len(existing_df)} existing records from {hub_path}")
+        except Exception as e:
+            logger.error(f"Error loading existing hub data: {e}")
+            # Continue with empty existing data
+    
+    # Filter out duplicates - keep only rows with IDs not in existing data
+    new_records = df[~df['id'].isin(existing_ids)].copy()
+    new_count = len(new_records)
+    
+    if new_count == 0:
+        logger.info("No new unique records to add")
+        return 0
+    
+    # Combine existing and new data
+    if not existing_df.empty:
+        combined_df = pd.concat([existing_df, new_records], ignore_index=True)
+        logger.info(f"Appending {new_count} new records to existing {len(existing_df)} records")
+    else:
+        combined_df = new_records
+        logger.info(f"Creating new hub file with {new_count} records")
+    
+    # Save to Parquet with snappy compression
+    try:
+        combined_df.to_parquet(
+            hub_path,
+            engine='pyarrow',
+            compression='snappy',
+            index=False
+        )
+        logger.info(f"Saved {len(combined_df)} total records to {hub_path}")
+    except Exception as e:
+        logger.error(f"Error saving to hub: {e}")
+        raise
+    
+    return new_count
