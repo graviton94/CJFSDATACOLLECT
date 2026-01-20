@@ -256,15 +256,15 @@ def main():
     
     with col2:
         # High Risk Count - count records with specific high-risk hazard categories
-        high_risk_keywords = ['salmonella', 'listeria', 'e. coli', 'e.coli', 'heavy metal', 'pesticide']
+        high_risk_keywords = ['salmonella', 'listeria', 'e.coli', 'heavy metal', 'pesticide']
         if 'hazard_category' in df_filtered.columns:
-            high_risk_count = df_filtered[
-                df_filtered['hazard_category'].str.lower().str.contains('|'.join(high_risk_keywords), na=False)
-            ].shape[0]
+            high_risk_count = df_filtered['hazard_category'].str.lower().str.contains(
+                '|'.join(high_risk_keywords), na=False
+            ).sum()
         elif 'hazard_reason' in df_filtered.columns:
-            high_risk_count = df_filtered[
-                df_filtered['hazard_reason'].str.lower().str.contains('|'.join(high_risk_keywords), na=False)
-            ].shape[0]
+            high_risk_count = df_filtered['hazard_reason'].str.lower().str.contains(
+                '|'.join(high_risk_keywords), na=False
+            ).sum()
         else:
             high_risk_count = 0
         st.metric("⚠️ High Risk Count", f"{high_risk_count:,}")
