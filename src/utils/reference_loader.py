@@ -5,6 +5,7 @@ from pathlib import Path
 import time
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+from loguru import logger
 
 class ReferenceLoader:
     """
@@ -111,6 +112,43 @@ class ReferenceLoader:
                     print(f"⚠️ {config['desc']} 수집 실패: 데이터 없음\n")
             except Exception as e:
                 print(f"🚫 {config['desc']} 처리 중단: {e}\n")
+        
+        # 국가명 마스터 데이터 처리
+        self._process_country_master()
+    
+    def _process_country_master(self):
+        """국가명 마스터 데이터 TSV -> Parquet 변환"""
+        print("📥 국가명 마스터 데이터 처리 중...")
+        
+        tsv_path = self.OUTPUT_DIR / "country_master.tsv"
+        parquet_path = self.OUTPUT_DIR / "country_master.parquet"
+        
+        if not tsv_path.exists():
+            print(f"   ⚠️ {tsv_path} 파일이 없습니다.")
+            return
+        
+        try:
+            # TSV 파일 읽기 (한글 인코딩 지원)
+            df = pd.read_csv(tsv_path, sep='\t', encoding='utf-8')
+            
+            # 컬럼명 정규화 (띄어쓰기 제거, 영문으로 변환)
+            df.columns = [
+                'country_name_eng',
+                'country_name_kor',
+                'iso_2',
+                'iso_3',
+                'iso_numeric'
+            ]
+            
+            # NULL 값 처리
+            df = df.fillna('')
+            
+            # Parquet 저장
+            df.to_parquet(parquet_path, engine='pyarrow', compression='snappy', index=False)
+            print(f"   💾 국가명 마스터 저장 완료: {parquet_path} (Total {len(df)} rows)")
+            
+        except Exception as e:
+            print(f"   ❌ 국가명 마스터 처리 실패: {e}")
 
 if __name__ == "__main__":
     loader = ReferenceLoader()

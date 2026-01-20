@@ -13,10 +13,10 @@ import sys
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from schema import validate_data, normalize_dataframe
+from schema import validate_schema
 
 
-def save_to_parquet(df: pd.DataFrame, data_dir: Union[str, Path], source: str = None) -> Path:
+def save_to_parquet(df: pd.DataFrame, data_dir: Union[str, Path], source: str = None) -> int:
     """
     Save DataFrame to Parquet file with schema validation and append support.
     
@@ -26,7 +26,7 @@ def save_to_parquet(df: pd.DataFrame, data_dir: Union[str, Path], source: str = 
         source: Optional source name (for logging purposes only, not used for file naming)
         
     Returns:
-        Path to saved file
+        Number of new records added
     """
     # If data_dir is a file path (ends with .parquet), use it directly
     # Otherwise, assume it's a directory and use hub_data.parquet
@@ -34,14 +34,14 @@ def save_to_parquet(df: pd.DataFrame, data_dir: Union[str, Path], source: str = 
     if path_obj.suffix != '.parquet':
         path_obj = path_obj / 'hub_data.parquet'
     
-    # Validate schema before saving
-    is_valid, errors = validate_data(df)
-    if not is_valid:
-        logger.error(f"Schema validation failed: {errors}")
-        raise ValueError(f"Schema validation failed: {errors}")
+    # Validate and normalize schema before saving
+    df = validate_schema(df)
     
     # Ensure parent directory exists
     path_obj.parent.mkdir(parents=True, exist_ok=True)
+    
+    # Track number of new records
+    new_count = len(df)
     
     # Check if file exists for appending
     if path_obj.exists():
@@ -52,7 +52,7 @@ def save_to_parquet(df: pd.DataFrame, data_dir: Union[str, Path], source: str = 
             
             # Append new data
             combined_df = pd.concat([existing_df, df], ignore_index=True)
-            logger.info(f"Appending {len(df)} new records to existing {len(existing_df)} records")
+            logger.info(f"Appending {new_count} new records to existing {len(existing_df)} records")
             
             # Save combined data
             combined_df.to_parquet(
@@ -74,9 +74,9 @@ def save_to_parquet(df: pd.DataFrame, data_dir: Union[str, Path], source: str = 
             compression='snappy',
             index=False
         )
-        logger.info(f"Saved {len(df)} records to new file {path_obj}")
+        logger.info(f"Saved {new_count} records to new file {path_obj}")
     
-    return path_obj
+    return new_count
 
 
 def load_parquet(path: Union[str, Path]) -> pd.DataFrame:
@@ -171,34 +171,27 @@ def load_recent_data(data_dir: Union[str, Path], days: int = 30) -> pd.DataFrame
 
 def save_to_hub(df: pd.DataFrame, data_dir: Union[str, Path] = None) -> int:
     """
-    Save DataFrame to hub with deduplication based on record_id (id field).
+    Save DataFrame to hub with deduplication based on composite key.
     
     This function combines loading, deduplication, and saving in a single operation:
     1. Loads existing data from data/hub/hub_data.parquet (if exists)
-    2. Filters out rows from new DataFrame where id already exists
+    2. Filters out duplicate rows using composite key (data_source + source_detail + registration_date)
     3. Appends only new unique rows to existing data
     4. Saves back to hub_data.parquet with snappy compression
     5. Returns count of newly added records
     
     Args:
-        df: New DataFrame to save (must contain 'id' field as record_id)
+        df: New DataFrame to save (must follow UNIFIED_SCHEMA)
         data_dir: Directory path to hub_data.parquet (default: data/hub)
         
     Returns:
         Count of newly added records
         
     Raises:
-        ValueError: If DataFrame doesn't contain 'id' column or fails schema validation
+        ValueError: If DataFrame fails schema validation
     """
-    # Validate input DataFrame has id column (record_id)
-    if 'id' not in df.columns:
-        raise ValueError("DataFrame must contain 'id' column (record_id)")
-    
-    # Validate schema before processing
-    is_valid, errors = validate_data(df)
-    if not is_valid:
-        logger.error(f"Schema validation failed: {errors}")
-        raise ValueError(f"Schema validation failed: {errors}")
+    # Validate and normalize schema before processing
+    df = validate_schema(df)
     
     # Set default data_dir if not provided
     if data_dir is None:
@@ -214,19 +207,38 @@ def save_to_hub(df: pd.DataFrame, data_dir: Union[str, Path] = None) -> int:
     
     # Load existing data if file exists
     existing_df = pd.DataFrame()
-    existing_ids = set()
     
     if hub_path.exists():
         try:
             existing_df = pd.read_parquet(hub_path, engine='pyarrow')
-            existing_ids = set(existing_df['id'].tolist())
             logger.info(f"Loaded {len(existing_df)} existing records from {hub_path}")
         except Exception as e:
             logger.error(f"Error loading existing hub data: {e}")
             # Continue with empty existing data
     
-    # Filter out duplicates - keep only rows with IDs not in existing data
-    new_records = df[~df['id'].isin(existing_ids)].copy()
+    # Create composite key for deduplication: data_source + source_detail + registration_date
+    # This ensures we don't duplicate the same record from the same source
+    if not existing_df.empty:
+        existing_df['_dedup_key'] = (
+            existing_df['data_source'].astype(str) + '::' +
+            existing_df['source_detail'].astype(str) + '::' +
+            existing_df['registration_date'].astype(str)
+        )
+        existing_keys = set(existing_df['_dedup_key'].tolist())
+        existing_df = existing_df.drop(columns=['_dedup_key'])
+    else:
+        existing_keys = set()
+    
+    # Create dedup key for new data
+    df['_dedup_key'] = (
+        df['data_source'].astype(str) + '::' +
+        df['source_detail'].astype(str) + '::' +
+        df['registration_date'].astype(str)
+    )
+    
+    # Filter out duplicates - keep only rows with keys not in existing data
+    new_records = df[~df['_dedup_key'].isin(existing_keys)].copy()
+    new_records = new_records.drop(columns=['_dedup_key'])
     new_count = len(new_records)
     
     if new_count == 0:

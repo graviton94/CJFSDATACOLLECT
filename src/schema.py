@@ -66,25 +66,30 @@ def validate_schema(df: pd.DataFrame) -> pd.DataFrame:
     """
     DataFrame이 13개 컬럼 규칙을 준수하도록 강제 변환합니다.
     """
+    # 명시적 복사로 SettingWithCopyWarning 방지
+    df = df.copy()
+    
     # 1. 누락된 컬럼은 None으로 생성
     for col in UNIFIED_SCHEMA:
         if col not in df.columns:
             df[col] = None
             
     # 2. 컬럼 순서 강제 및 불필요 컬럼 제거
-    df = df[UNIFIED_SCHEMA]
+    df = df[UNIFIED_SCHEMA].copy()
     
     # 3. 데이터 타입 강제 변환
     # 날짜: Datetime -> Date String (YYYY-MM-DD)
     if 'registration_date' in df.columns:
-        df['registration_date'] = pd.to_datetime(df['registration_date'], errors='coerce').dt.strftime('%Y-%m-%d')
+        df.loc[:, 'registration_date'] = pd.to_datetime(
+            df['registration_date'], errors='coerce'
+        ).dt.strftime('%Y-%m-%d')
         
     # Boolean 필드 처리 (None -> False)
     for bool_col in ['analyzable', 'interest_item']:
-        df[bool_col] = df[bool_col].fillna(False).astype(bool)
+        df.loc[:, bool_col] = df[bool_col].fillna(False).astype(bool)
 
     # 문자열 필드 처리 (None -> "")
     str_cols = [c for c in UNIFIED_SCHEMA if c not in ['analyzable', 'interest_item']]
-    df[str_cols] = df[str_cols].fillna("")
+    df.loc[:, str_cols] = df[str_cols].fillna("")
     
     return df

@@ -1,356 +1,416 @@
-"""
-Korea MFDS (Ministry of Food and Drug Safety) data collector.
-Uses Open API to collect food safety data from Korea.
-"""
-
-import pandas as pd
-from datetime import datetime, timedelta
-from pathlib import Path
-import requests
-from loguru import logger
-import sys
 import os
-from typing import Optional
+import json
+import re
+import requests
+import pandas as pd
+from datetime import datetime
+from dotenv import load_dotenv
+from pathlib import Path
 
-# Add parent directory to path for imports
-sys.path.insert(0, str(Path(__file__).parent.parent))
+# 통합 스키마 및 유틸리티 가져오기
+from src.schema import UNIFIED_SCHEMA, validate_schema, generate_record_id, get_empty_dataframe
 
-from schema import normalize_dataframe
-from utils.deduplication import merge_and_deduplicate
-from utils.storage import save_to_parquet
-
+load_dotenv()
 
 class MFDSCollector:
-    """Collector for Korea MFDS Open API."""
+    """
+    대한민국 식약처(MFDS) 위해정보 수집기
+    현재 구현된 서비스:
+    - I2620: 국내식품 부적합 정보 (Domestic Food Inspection Failure)
+    """
     
-    def __init__(self, api_key: Optional[str] = None, data_dir: Path = None):
-        """
-        Initialize MFDS collector.
-        
-        Args:
-            api_key: MFDS Open API key (can also be set via MFDS_API_KEY env var)
-            data_dir: Directory for storing processed data
-        """
-        self.source = "MFDS"
-        self.data_dir = data_dir or Path("data/processed")
-        self.api_key = api_key or os.getenv('MFDS_API_KEY')
-        self.base_url = "https://openapi.foodsafetykorea.go.kr/api"
-        
-    def collect(self, days_back: int = 7) -> pd.DataFrame:
-        """
-        Collect MFDS data via Open API.
-        
-        Args:
-            days_back: Number of days to look back
-            
-        Returns:
-            DataFrame with collected data
-        """
-        logger.info(f"Starting MFDS collection for last {days_back} days")
-        
+    BASE_URL = "http://openapi.foodsafetykorea.go.kr/api"
+    REF_DIR = Path("data/reference")
+    
+    def __init__(self):
+        self.api_key = os.getenv("KOREA_FOOD_API_KEY")
         if not self.api_key:
-            logger.warning("No MFDS API key provided - using mock data")
-            records = self._create_mock_data(days_back)
-        else:
-            # Call actual API
-            records = self._call_api(days_back)
-        
-        if not records:
-            logger.warning("No records collected from MFDS")
-            return pd.DataFrame()
-        
-        df = pd.DataFrame(records)
-        logger.info(f"Collected {len(df)} records from MFDS")
-        
-        return df
-    
-    def _call_api(self, days_back: int) -> list:
-        """
-        Call MFDS Open API to retrieve data.
-        Implements actual API calls for I0030 (Risk Information) and I2710 (Overseas Blocked Food).
-        
-        Args:
-            days_back: Number of days to look back
+            raise ValueError("❌ Error: KOREA_FOOD_API_KEY가 .env 파일에 없습니다.")
             
-        Returns:
-            List of records from all endpoints
-        """
-        records = []
-        
-        # Endpoints to query:
-        # I0030: Risk Information Service
-        # I2710: Overseas Blocked Food Import Information
-        endpoints = ['I0030', 'I2710']
-        
-        for endpoint in endpoints:
-            try:
-                # MFDS API supports pagination
-                page_size = 100
-                start_idx = 1
-                
-                while True:
-                    end_idx = start_idx + page_size - 1
-                    
-                    # Build API URL
-                    # Format: {base_url}/{api_key}/{endpoint}/{data_type}/{start_idx}/{end_idx}
-                    url = f"{self.base_url}/{self.api_key}/{endpoint}/json/{start_idx}/{end_idx}"
-                    
-                    logger.info(f"Calling MFDS API: {endpoint} (rows {start_idx}-{end_idx})")
-                    
-                    response = requests.get(url, timeout=30)
-                    response.raise_for_status()
-                    
-                    data = response.json()
-                    
-                    # Check for API errors
-                    # MFDS returns error structure like: {endpoint: {RESULT: {CODE: "ERROR-xxx"}}}
-                    if endpoint in data:
-                        result = data[endpoint].get('RESULT', {})
-                        if result.get('CODE') and 'ERROR' in result.get('CODE', ''):
-                            logger.warning(f"MFDS API returned error for {endpoint}: {result.get('MSG', 'Unknown error')}")
-                            break
-                        
-                        # Get data rows
-                        items = data[endpoint].get('row', [])
-                        
-                        if not items:
-                            logger.info(f"No more data from {endpoint}")
-                            break
-                        
-                        # Parse response
-                        parsed_records = self._parse_api_response(items, endpoint)
-                        records.extend(parsed_records)
-                        
-                        logger.info(f"Retrieved {len(parsed_records)} records from {endpoint} (page {start_idx}-{end_idx})")
-                        
-                        # Check if we got less than page_size, indicating last page
-                        if len(items) < page_size:
-                            break
-                        
-                        # Move to next page
-                        start_idx = end_idx + 1
-                    else:
-                        logger.warning(f"Unexpected response structure from {endpoint}")
-                        break
-                
-            except requests.RequestException as e:
-                logger.error(f"Error calling MFDS API endpoint {endpoint}: {e}")
-            except Exception as e:
-                logger.error(f"Error parsing MFDS response for {endpoint}: {e}")
-        
-        return records
-    
-    def _parse_api_response(self, items: list, endpoint: str) -> list:
-        """
-        Parse API response items into standardized format.
-        
-        Args:
-            items: List of items from API response
-            endpoint: API endpoint identifier (I0030 or I2710)
-            
-        Returns:
-            List of parsed records
-        """
-        records = []
-        
-        for item in items:
-            try:
-                # Field mapping varies by endpoint
-                if endpoint == 'I0030':
-                    # I0030: Risk Information Service
-                    # Maps fields like PRDUCT (product), PRDLST_NM (product name), etc.
-                    record = {
-                        'source': self.source,
-                        'source_reference': item.get('PRDLST_REPORT_NO', item.get('PRDLST_CD', 'UNKNOWN')),
-                        'notification_date': self._parse_date(item.get('PRDLST_DCNM_DT', item.get('REG_DT'))),
-                        'ingestion_date': datetime.now(),
-                        'product_name': item.get('PRDUCT', item.get('PRDLST_NM', 'Unknown Product')),
-                        'product_category': item.get('PRDLST_CL_NM', item.get('INDUTY_NM', None)),
-                        'origin_country': item.get('ORIGIN_NM', item.get('BSSH_NM', 'South Korea')),
-                        'destination_country': 'South Korea',
-                        'hazard_category': item.get('VIOL_CONT', item.get('TEST_ITEM_NM', 'Unknown Hazard')),
-                        'hazard_substance': item.get('TEST_ITEM_NM', None),
-                        'risk_decision': 'risk_information',
-                        'risk_level': self._determine_risk_level(item),
-                        'action_taken': item.get('HANDLING_METHOD', None),  # Handling method (취급방법)
-                        'description': item.get('PRDLST_NTCE_MATR', None),
-                        'data_quality_score': 0.90,
-                    }
-                elif endpoint == 'I2710':
-                    # I2710: Overseas Blocked Food Import Information
-                    # Maps fields for imported food that was blocked
-                    record = {
-                        'source': self.source,
-                        'source_reference': item.get('SEQ', item.get('NTCE_NO', 'UNKNOWN')),
-                        'notification_date': self._parse_date(item.get('DSPS_DT', item.get('REG_DT'))),
-                        'ingestion_date': datetime.now(),
-                        'product_name': item.get('PRDLST_NM', 'Unknown Product'),
-                        'product_category': item.get('PRDLST_CL_NM', None),
-                        'origin_country': item.get('MNFCT_CNTRY_NM', item.get('EXPT_CNTRY_NM', 'Unknown')),
-                        'destination_country': 'South Korea',
-                        'hazard_category': item.get('DSPS_RSN', item.get('VIOL_CONT', 'Unknown Hazard')),
-                        'hazard_substance': item.get('UNSUITABLE_ITEM_NM', None),
-                        'risk_decision': 'import_blocked',
-                        'risk_level': 'high',  # Blocked imports are typically high risk
-                        'action_taken': item.get('DSPS_MTHD_NM', 'Import blocked'),
-                        'description': item.get('VIOL_CONT', None),
-                        'data_quality_score': 0.92,
-                    }
-                else:
-                    # Fallback for unknown endpoints
-                    record = {
-                        'source': self.source,
-                        'source_reference': item.get('SEQ', 'UNKNOWN'),
-                        'notification_date': self._parse_date(item.get('REG_DT')),
-                        'ingestion_date': datetime.now(),
-                        'product_name': item.get('PRDLST_NM', 'Unknown Product'),
-                        'product_category': None,
-                        'origin_country': 'South Korea',
-                        'destination_country': 'South Korea',
-                        'hazard_category': 'Unknown',
-                        'hazard_substance': None,
-                        'risk_decision': 'unknown',
-                        'risk_level': 'moderate',
-                        'action_taken': None,
-                        'description': None,
-                        'data_quality_score': 0.70,
-                    }
-                
-                records.append(record)
-            except Exception as e:
-                logger.warning(f"Error parsing item from {endpoint}: {e}")
-                continue
-        
-        return records
-    
-    def _parse_date(self, date_str: Optional[str]) -> datetime:
-        """Parse date string from API."""
-        if not date_str:
-            return datetime.now()
+        # ---------------------------------------------------------
+        # [Smart Lookup] 기준정보 로드 (메모리 캐싱)
+        # ---------------------------------------------------------
+        print("📥 기준정보(Reference Data) 로드 중...")
+        self.product_ref = self._load_reference("product_code_master.parquet", "KOR_NM")
+        self.hazard_ref = self._load_reference("hazard_code_master.parquet", "TESTITM_NM")
+        self.country_ref = self._load_country_reference()
+        print("✅ 기준정보 로드 완료.")
+
+    def _load_reference(self, filename, index_col):
+        """Parquet 파일을 읽어 검색에 최적화된 Dictionary로 변환 (안전 모드)"""
+        file_path = self.REF_DIR / filename
+        if not file_path.exists():
+            print(f"   ⚠️ Warning: {filename} 파일이 없습니다. Lookup 기능이 제한됩니다.")
+            return {}
         
         try:
-            # Try common Korean date formats
-            for fmt in ['%Y%m%d', '%Y-%m-%d', '%Y.%m.%d']:
+            df = pd.read_parquet(file_path)
+            
+            # [수정] 인덱스 설정 전, 컬럼 존재 여부 확인 및 중복 제거 강화
+            if index_col not in df.columns:
+                print(f"   ⚠️ Key Column '{index_col}' not found in {filename}. Columns: {df.columns.tolist()}")
+                return {}
+            
+            # NaN 제거 및 문자열 변환
+            df = df.dropna(subset=[index_col])
+            df[index_col] = df[index_col].astype(str)
+            
+            # 중복 제거 (첫 번째 값 유지)
+            df = df.drop_duplicates(subset=[index_col])
+            
+            # 딕셔너리 변환
+            return df.set_index(index_col).to_dict('index')
+            
+        except Exception as e:
+            print(f"   ❌ {filename} 로드 실패: {e}")
+            return {}
+
+    def fetch_service(self, service_id, start_idx, end_idx):
+        """API 호출 및 JSON 응답 반환"""
+        url = f"{self.BASE_URL}/{self.api_key}/{service_id}/json/{start_idx}/{end_idx}"
+        try:
+            response = requests.get(url, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+            
+            # 데이터 검증
+            if service_id in data and 'row' in data[service_id]:
+                return data[service_id]['row']
+            # 에러 메시지 확인
+            if 'RESULT' in data and 'MSG' in data['RESULT']:
+                if "해당하는 데이터가 없습니다" in data['RESULT']['MSG']:
+                    return []
+            return []
+        except Exception as e:
+            print(f"   ⚠️ API 호출 에러 ({start_idx}-{end_idx}): {e}")
+            return []
+
+    def normalize_date(self, date_str):
+        """날짜 변환: 2025.03.12 -> 2025-03-12"""
+        if not date_str: return None
+        return date_str.replace('.', '-')
+
+    def _lookup_product_info(self, product_type):
+        """품목유형 이름으로 상위/최상위 유형 조회"""
+        info = {"top": None, "upper": None}
+        if product_type in self.product_ref:
+            ref_data = self.product_ref[product_type]
+            # 식약처 백서 필드명에 맞춰 매핑 (필드명은 실제 백서 데이터 확인 후 조정 필요)
+            # 통상: GR_NM(군), PRDLST_CL_NM(대분류) 등
+            info["top"] = ref_data.get("GR_NM") or ref_data.get("HRNK_PRDLST_NM") 
+            info["upper"] = ref_data.get("PRDLST_CL_NM")
+        return info
+
+    def _lookup_hazard_info(self, hazard_item):
+        """시험항목 이름으로 분류(카테고리) 조회"""
+        info = {"category": "Uncategorized", "analyzable": False, "interest": False}
+        if hazard_item in self.hazard_ref:
+            ref_data = self.hazard_ref[hazard_item]
+            # 백서 필드명 가정: LCLS_NM(대분류)
+            info["category"] = ref_data.get("LCLS_NM", "Uncategorized")
+            # 백서에 '분석가능여부' 등이 있다면 여기서 매핑
+            # info["analyzable"] = ref_data.get("IS_ANALYZABLE") == 'Y'
+        return info
+
+    def collect_i2620(self):
+        """
+        [I2620] 국내식품 검사부적합 수집 로직
+        """
+        service_id = "I2620"
+        print(f"🚀 [I2620] 국내식품 부적합 정보 수집 시작...")
+        
+        all_records = []
+        start, step = 1, 1000
+        
+        while True:
+            end = start + step - 1
+            rows = self.fetch_service(service_id, start, end)
+            
+            if not rows:
+                print(f"   🎉 수집 완료 (Total pages processed)")
+                break
+                
+            print(f"   - Processing {start} ~ {end} (Got {len(rows)} items)")
+            
+            for row in rows:
                 try:
-                    return datetime.strptime(date_str, fmt)
-                except ValueError:
+                    # 1. 필드 추출 (API 명세 기준)
+                    raw_date = row.get("CRET_DTM", "") # 등록일 (YYYY.MM.DD)
+                    product_name = row.get("PRDTNM", "") # 제품명
+                    product_type = row.get("PRDLST_CD_NM", "") # 식품유형 (ex: 냉이)
+                    hazard_item = row.get("TEST_ITMNM", "") # 부적합항목 (ex: 펜디메탈린)
+                    unique_seq = row.get("RTRVLDSUSE_SEQ", "") # 회수폐기일련번호
+                    
+                    # 2. 데이터 정제 & Lookup
+                    reg_date = self.normalize_date(raw_date)
+                    prod_info = self._lookup_product_info(product_type)
+                    hazard_info = self._lookup_hazard_info(hazard_item)
+                    
+                    # 3. 상세 출처 생성
+                    source_detail = f"{service_id}-{unique_seq}" if unique_seq else f"{service_id}-UNKNOWN"
+                    
+                    # 4. 통합 스키마 매핑 (13 Columns Strict)
+                    record = {
+                        "registration_date": reg_date,
+                        "data_source": "MFDS",
+                        "source_detail": source_detail,
+                        "product_type": product_type,
+                        "top_level_product_type": prod_info["top"],
+                        "upper_product_type": prod_info["upper"],
+                        "product_name": product_name,
+                        "origin_country": "South Korea", # 국내식품
+                        "notifying_country": "South Korea",
+                        "hazard_category": hazard_info["category"],
+                        "hazard_item": hazard_item,
+                        "analyzable": hazard_info["analyzable"],
+                        "interest_item": hazard_info["interest"]
+                    }
+                    all_records.append(record)
+                    
+                except Exception as e:
+                    print(f"   ⚠️ Skipping row due to error: {e}")
                     continue
-            return datetime.now()
-        except:
-            return datetime.now()
-    
-    def _determine_risk_level(self, item: dict) -> str:
-        """Determine risk level from API data."""
-        # This would be based on actual API fields
-        return 'moderate'
-    
-    def _create_mock_data(self, days_back: int) -> list:
-        """Create mock MFDS data for demonstration."""
-        records = []
-        base_date = datetime.now()
-        
-        products = [
-            'Kimchi', 'Instant Noodles', 'Soy Sauce', 'Ginseng Products', 'Seaweed Snacks'
-        ]
-        hazards = [
-            'Microbial contamination', 'Heavy metals', 'Pesticide residues',
-            'Food additives', 'Allergens'
-        ]
-        
-        for i in range(min(days_back, 5)):  # Create up to 5 sample records
-            date = base_date - timedelta(days=i)
+
+            # 테스트용: 너무 많으면 오래 걸리므로 일단 2000건에서 break (실제 운영 시 제거)
+            # if end >= 2000: break 
             
-            records.append({
-                'source': self.source,
-                'source_reference': f'KR-2024-{500 + i}',
-                'notification_date': date,
-                'ingestion_date': datetime.now(),
-                'product_name': products[i % len(products)],
-                'product_category': 'Processed foods',
-                'origin_country': 'South Korea',
-                'destination_country': 'South Korea',
-                'hazard_category': hazards[i % len(hazards)],
-                'hazard_substance': None,
-                'risk_decision': 'recall',
-                'risk_level': 'moderate' if i % 2 == 0 else 'low',
-                'action_taken': 'Product recall and disposal',
-                'description': f'Voluntary recall of {products[i % len(products)]} due to {hazards[i % len(hazards)]}',
-                'data_quality_score': 0.92,
-            })
-        
-        return records
-    
-    def transform_to_schema(self, df: pd.DataFrame) -> pd.DataFrame:
-        """
-        Transform collected data to unified schema.
-        
-        Args:
-            df: Raw collected DataFrame
+            start += step
+
+        if not all_records:
+            return get_empty_dataframe()
             
-        Returns:
-            Normalized DataFrame
+        return pd.DataFrame(all_records)
+
+    def collect_i0490(self):
         """
-        # Ensure source is set
-        df['source'] = self.source
-        
-        # Set ingestion date
-        df['ingestion_date'] = datetime.now()
-        
-        # Normalize to schema
-        df_normalized = normalize_dataframe(df)
-        
-        return df_normalized
-    
-    def collect_and_store(self, days_back: int = 7) -> int:
+        [I0490] 회수판매중지 정보 수집 로직
         """
-        Collect MFDS data and store to Parquet.
+        service_id = "I0490"
+        print(f"🚀 [I0490] 회수판매중지 정보 수집 시작...")
         
-        Args:
-            days_back: Number of days to look back
+        all_records = []
+        start, step = 1, 1000
+        
+        while True:
+            end = start + step - 1
+            rows = self.fetch_service(service_id, start, end)
             
-        Returns:
-            Number of new records stored
+            if not rows:
+                print(f"   🎉 수집 완료 (Total pages processed)")
+                break
+                
+            print(f"   - Processing {start} ~ {end} (Got {len(rows)} items)")
+            
+            for row in rows:
+                try:
+                    # 1. 필드 추출 (API 명세 기준)
+                    raw_date = row.get("CRET_DTM", "")  # 등록일 (YYYY-MM-DD HH:MM:SS)
+                    product_name = row.get("PRDTNM", "")  # 제품명
+                    product_type = row.get("PRDLST_CD_NM", "")  # 식품유형
+                    recall_reason = row.get("RTRVLPRVNS", "")  # 회수사유 (e.g., 이물 혼입)
+                    unique_seq = row.get("RTRVLDSUSE_SEQ", "")  # 회수폐기일련번호
+                    
+                    # 2. 날짜 정규화: YYYY-MM-DD HH:MM:SS -> YYYY-MM-DD (첫 10글자만)
+                    reg_date = raw_date[:10] if raw_date else None
+                    
+                    # 3. 데이터 정제 & Lookup
+                    prod_info = self._lookup_product_info(product_type)
+                    hazard_info = self._lookup_hazard_info(recall_reason)
+                    
+                    # 4. 상세 출처 생성
+                    source_detail = f"{service_id}-{unique_seq}" if unique_seq else f"{service_id}-UNKNOWN"
+                    
+                    # 5. 통합 스키마 매핑 (13 Columns Strict)
+                    record = {
+                        "registration_date": reg_date,
+                        "data_source": "MFDS",
+                        "source_detail": source_detail,
+                        "product_type": product_type,
+                        "top_level_product_type": prod_info["top"],
+                        "upper_product_type": prod_info["upper"],
+                        "product_name": product_name,
+                        "origin_country": "South Korea",  # 국내식품 회수
+                        "notifying_country": "South Korea",
+                        "hazard_category": hazard_info["category"],
+                        "hazard_item": recall_reason,
+                        "analyzable": hazard_info["analyzable"],
+                        "interest_item": hazard_info["interest"]
+                    }
+                    all_records.append(record)
+                    
+                except Exception as e:
+                    print(f"   ⚠️ Skipping row due to error: {e}")
+                    continue
+
+            start += step
+
+        if not all_records:
+            return get_empty_dataframe()
+            
+        return pd.DataFrame(all_records)
+
+    def _load_country_reference(self):
+        """국가명 마스터 Parquet -> 딕셔너리 변환"""
+        file_path = self.REF_DIR / "country_master.parquet"
+        if not file_path.exists():
+            print(f"   ⚠️ Warning: country_master.parquet 파일이 없습니다.")
+            return {}
+        
+        try:
+            df = pd.read_parquet(file_path)
+            # 국가명(한글)을 키로, 영문명+ISO를 값으로 하는 딕셔너리 생성
+            country_dict = {}
+            for _, row in df.iterrows():
+                kor_name = row.get('country_name_kor', '')
+                if kor_name:
+                    country_dict[kor_name] = {
+                        'eng': row.get('country_name_eng', ''),
+                        'iso_2': row.get('iso_2', ''),
+                        'iso_3': row.get('iso_3', '')
+                    }
+            return country_dict
+        except Exception as e:
+            print(f"   ❌ country_master.parquet 로드 실패: {e}")
+            return {}
+
+    def _normalize_country_name(self, raw_country):
+        """원본 국가명(BDT에서 추출)을 정규화된 국가명으로 변환"""
+        if not raw_country:
+            return "Overseas"
+        
+        # 좌우 공백 제거
+        raw_country = raw_country.strip()
+        
+        # 1차: 정확한 매치
+        if raw_country in self.country_ref:
+            return self.country_ref[raw_country]['eng']
+        
+        # 2차: 부분 매치 (첫 문자 일치)
+        for kor_name, data in self.country_ref.items():
+            if kor_name.startswith(raw_country[:2]):  # 첫 2글자 일치
+                return data['eng']
+        
+        # 3차: 반환 (매칭 실패)
+        return raw_country if raw_country else "Overseas"
+
+    def _extract_origin_from_bdt(self, bdt_text):
+        """BDT 필드에서 지역(원산지) 정보 정규식 추출"""
+        if not bdt_text:
+            return "Overseas"
+        
+        # 패턴 1: "-지역: 국가명" 또는 "지역: 국가명"
+        match = re.search(r"[-]?지역:\s*([가-힣a-zA-Z\s]+?)(?:\s*[-]|$)", bdt_text)
+        if match:
+            origin = match.group(1).strip()
+            return origin if origin else "Overseas"
+        
+        # 패턴 2: "지역" 키워드 뒤의 텍스트
+        match = re.search(r"지역\s*[:\-]\s*([가-힣a-zA-Z]+)", bdt_text)
+        if match:
+            return match.group(1).strip()
+        
+        # 추출 실패 시 기본값
+        return "Overseas"
+
+    def collect_i2810(self):
         """
-        # Collect data
-        df = self.collect(days_back)
+        [I2810] 해외 위해식품 회수정보 수집 로직
+        데이터가 BDT 필드의 비정형 텍스트에 포함되어 있어 정규식 파싱이 필요함
+        """
+        service_id = "I2810"
+        print(f"🚀 [I2810] 해외 위해식품 회수정보 수집 시작...")
         
-        if df.empty:
-            logger.info("No new MFDS data to process")
-            return 0
+        all_records = []
+        start, step = 1, 1000
         
-        # Transform to schema
-        df = self.transform_to_schema(df)
-        
-        # Deduplicate
-        df_new = merge_and_deduplicate(df, self.data_dir)
-        
-        if df_new.empty:
-            logger.info("No new MFDS records after deduplication")
-            return 0
-        
-        # Save to Parquet
-        save_to_parquet(df_new, self.data_dir, self.source)
-        
-        return len(df_new)
+        while True:
+            end = start + step - 1
+            rows = self.fetch_service(service_id, start, end)
+            
+            if not rows:
+                print(f"   🎉 수집 완료 (Total pages processed)")
+                break
+                
+            print(f"   - Processing {start} ~ {end} (Got {len(rows)} items)")
+            
+            for row in rows:
+                try:
+                    # 1. 필드 추출
+                    raw_date = row.get("CRET_DTM", "")  # 등록일 (YYYYMMDD)
+                    product_name = row.get("TITL", "")  # 제품명
+                    hazard_item = row.get("DETECT_TITL", "")  # 위해물질
+                    notify_no = row.get("NTCTXT_NO", "")  # 통지번호
+                    bdt_text = row.get("BDT", "")  # 비정형 텍스트 (지역 추출 대상)
+                    
+                    # 2. 날짜 정규화: YYYYMMDD -> YYYY-MM-DD
+                    if raw_date and len(raw_date) == 8:
+                        reg_date = f"{raw_date[0:4]}-{raw_date[4:6]}-{raw_date[6:8]}"
+                    else:
+                        reg_date = None
+                    
+                    # 3. BDT에서 원산지 추출 (정규식)
+                    origin_country = self._extract_origin_from_bdt(bdt_text)
+                    
+                    # 4. Lookup을 통한 분류 정보 조회
+                    # 제품유형은 고정값이므로 lookup 스킵
+                    hazard_info = self._lookup_hazard_info(hazard_item)
+                    
+                    # 5. 상세 출처 생성
+                    source_detail = f"{service_id}-{notify_no}" if notify_no else f"{service_id}-UNKNOWN"
+                    
+                    # 6. 통합 스키마 매핑 (13 Columns Strict)
+                    record = {
+                        "registration_date": reg_date,
+                        "data_source": "MFDS",
+                        "source_detail": source_detail,
+                        "product_type": "수입식품(해외회수)",  # 고정값
+                        "top_level_product_type": "수입식품",  # 고정값
+                        "upper_product_type": "위해회수",  # 고정값
+                        "product_name": product_name,
+                        "origin_country": origin_country,  # BDT에서 추출
+                        "notifying_country": "South Korea",  # 고정값 (MFDS)
+                        "hazard_category": hazard_info["category"],
+                        "hazard_item": hazard_item,
+                        "analyzable": hazard_info["analyzable"],
+                        "interest_item": hazard_info["interest"]
+                    }
+                    all_records.append(record)
+                    
+                except Exception as e:
+                    print(f"   ⚠️ Skipping row due to error: {e}")
+                    continue
 
+            start += step
 
-def main():
-    """Main entry point for MFDS collector."""
-    import argparse
-    
-    parser = argparse.ArgumentParser(description='Collect Korea MFDS data')
-    parser.add_argument('--days', type=int, default=7, help='Days to look back')
-    parser.add_argument('--data-dir', type=Path, default=Path('data/processed'),
-                       help='Output directory')
-    parser.add_argument('--api-key', type=str, help='MFDS API key')
-    
-    args = parser.parse_args()
-    
-    collector = MFDSCollector(api_key=args.api_key, data_dir=args.data_dir)
-    count = collector.collect_and_store(days_back=args.days)
-    
-    logger.info(f"MFDS collection complete: {count} new records")
+        if not all_records:
+            return get_empty_dataframe()
+            
+        return pd.DataFrame(all_records)
 
+    def collect(self):
+        """메인 실행 함수: 모든 MFDS 서비스 통합 수집"""
+        # 1. 각 서비스별 수집
+        df_i2620 = self.collect_i2620()
+        df_i0490 = self.collect_i0490()
+        df_i2810 = self.collect_i2810()
+        
+        # 2. 결과 병합
+        dfs_to_combine = [df for df in [df_i2620, df_i0490, df_i2810] if not df.empty]
+        
+        if not dfs_to_combine:
+            return get_empty_dataframe()
+        
+        combined_df = pd.concat(dfs_to_combine, ignore_index=True)
+        
+        # 3. 최종 스키마 검증 및 반환
+        final_df = validate_schema(combined_df)
+        print(f"✅ [Total] 총 {len(final_df)} 건 수집 및 정규화 완료 (I2620 + I0490 + I2810).")
+        return final_df
 
-if __name__ == '__main__':
-    main()
+if __name__ == "__main__":
+    collector = MFDSCollector()
+    df = collector.collect()
+    print(df.head(5))
+    
+    # 결과 확인용 저장
+    # df.to_csv("mfds_i2620_result.csv", index=False, encoding='utf-8-sig')
