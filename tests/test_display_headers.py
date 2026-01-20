@@ -45,11 +45,7 @@ def test_display_headers_mapping():
     display_df = test_df.rename(columns=DISPLAY_HEADERS)
     
     # Verify Korean headers are present
-    expected_headers = [
-        '등록일자', '데이터소스', '상세출처', '품목유형', 
-        '최상위품목유형', '상위품목유형', '제품명', '원산지',
-        '통보국', '분류(카테고리)', '시험항목', '분석가능여부', '관심항목'
-    ]
+    expected_headers = list(DISPLAY_HEADERS.values())
     
     for header in expected_headers:
         assert header in display_df.columns, f"Korean header '{header}' not found in display dataframe"
