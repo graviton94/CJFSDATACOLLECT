@@ -134,7 +134,12 @@ class ImpFoodScraper:
                 
                 # Performance optimization: Block images and fonts
                 def block_resources(route):
-                    """Block images, fonts, and other unnecessary resources"""
+                    """
+                    Block unnecessary resources to improve scraping performance.
+                    
+                    Args:
+                        route: Playwright route object containing the request
+                    """
                     if route.request.resource_type in ["image", "font", "stylesheet"]:
                         route.abort()
                     else:
