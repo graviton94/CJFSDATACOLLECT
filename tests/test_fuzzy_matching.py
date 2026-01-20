@@ -362,10 +362,10 @@ class TestFuzzyMatcher:
         matcher = FuzzyMatcher(similarity_threshold=80, long_text_threshold=30)
         hazard_df = create_mock_hazard_data()
         
-        # Long text that doesn't contain exact keywords but is similar
+        # Long text that doesn't contain exact keywords but has a typo similar to "Salmonella"
         long_text = "Analysis showed contamination with a type of Salmonnella pathogen in multiple batches"
         result = matcher.match_hazard_category(long_text, hazard_df)
-        # Should fall back and find "Salmonnella" ~ "Salmonella" via keyword/fuzzy match
+        # Should fall back and potentially find "Salmonnella" ~ "Salmonella" via keyword/fuzzy match
         # (this might or might not match depending on the exact algorithm)
         # The important thing is it doesn't crash
         print("✓ Sentence scanning fallback works")
