@@ -304,9 +304,9 @@ def main():
     
     with col2:
         st.subheader("Daily Alert Trends")
-        if 'date_registered' in df_filtered.columns and not df_filtered.empty:
+        if 'date_registered_parsed' in df_filtered.columns and not df_filtered.empty:
             df_timeline = df_filtered.copy()
-            df_timeline['date'] = pd.to_datetime(df_timeline['date_registered'], errors='coerce').dt.date
+            df_timeline['date'] = df_timeline['date_registered_parsed'].dt.date
             timeline_counts = df_timeline.groupby('date').size().reset_index(name='count')
             timeline_counts = timeline_counts.sort_values('date')
             
@@ -338,11 +338,18 @@ def main():
         
         # Sort by date if available
         if 'date_registered' in df_display.columns:
-            df_display = df_display.sort_values('date_registered', ascending=False)
-            # Format dates for display
-            df_display['date_registered'] = pd.to_datetime(
-                df_display['date_registered'], errors='coerce'
-            ).dt.strftime('%Y-%m-%d')
+            # Add parsed column if not already in display
+            if 'date_registered_parsed' not in df_display.columns and 'date_registered_parsed' in df_filtered.columns:
+                df_display['date_registered_parsed'] = df_filtered['date_registered_parsed']
+            
+            if 'date_registered_parsed' in df_display.columns:
+                df_display = df_display.sort_values('date_registered_parsed', ascending=False)
+                # Format dates for display using already parsed column
+                df_display['date_registered'] = df_display['date_registered_parsed'].dt.strftime('%Y-%m-%d')
+                # Drop the temporary parsed column
+                df_display = df_display.drop(columns=['date_registered_parsed'])
+            else:
+                df_display = df_display.sort_values('date_registered', ascending=False)
         
         # Display searchable dataframe
         st.dataframe(
