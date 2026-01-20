@@ -25,18 +25,28 @@ def test_lookup_product_info_with_mock_data():
         ref_dir.mkdir(parents=True)
         
         # Create mock product_code_master.parquet
+        # NOTE: Using realistic structure with both _CD (codes) and _NM (names)
+        # The lookup now returns _NM columns (names) instead of _CD columns (codes)
         product_data = pd.DataFrame([
             {
                 'KOR_NM': '냉이',
                 'ENG_NM': 'Shepherd\'s Purse',
-                'HTRK_PRDLST_CD': '농산물',
-                'HRRK_PRDLST_CD': '채소류'
+                'HTRK_PRDLST_CD': 'A01',  # Code
+                'HTRK_PRDLST_NM': '농산물',  # Name (returned by lookup)
+                'GR_NM': '농산물',  # Alternative name
+                'HRRK_PRDLST_CD': 'A01-01',  # Code
+                'HRRK_PRDLST_NM': '채소류',  # Name (returned by lookup)
+                'PRDLST_CL_NM': '채소류'  # Alternative name
             },
             {
                 'KOR_NM': '연어',
                 'ENG_NM': 'Salmon',
-                'HTRK_PRDLST_CD': '수산물',
-                'HRRK_PRDLST_CD': '어류'
+                'HTRK_PRDLST_CD': 'B01',  # Code
+                'HTRK_PRDLST_NM': '수산물',  # Name (returned by lookup)
+                'GR_NM': '수산물',  # Alternative name
+                'HRRK_PRDLST_CD': 'B01-02',  # Code
+                'HRRK_PRDLST_NM': '어류',  # Name (returned by lookup)
+                'PRDLST_CL_NM': '어류'  # Alternative name
             }
         ])
         product_data.to_parquet(ref_dir / "product_code_master.parquet", engine='pyarrow')
