@@ -426,6 +426,45 @@ def render_dashboard(df: pd.DataFrame):
             daily_counts = df_filtered.groupby(df_filtered['date_parsed'].dt.date).size().reset_index(name='count')
             fig2 = px.line(daily_counts, x='date_parsed', y='count', markers=True)
             st.plotly_chart(fig2, use_container_width=True)
+    
+    # Second row for Hazard Category Distribution
+    st.markdown("---")
+    c_col3, c_col4 = st.columns(2)
+    
+    with c_col3:
+        st.subheader("위해요소 카테고리 분포")
+        if 'hazard_category' in df_filtered.columns:
+            hazard_dist = df_filtered['hazard_category'].value_counts()
+            # Filter out empty/null categories for cleaner visualization
+            hazard_dist = hazard_dist[hazard_dist.index != ""]
+            if not hazard_dist.empty:
+                fig3 = px.pie(
+                    names=hazard_dist.index,
+                    values=hazard_dist.values,
+                    hole=0.4,  # Creates a donut chart
+                    color_discrete_sequence=px.colors.qualitative.Set3
+                )
+                fig3.update_traces(textposition='inside', textinfo='percent+label')
+                st.plotly_chart(fig3, use_container_width=True)
+            else:
+                st.info("위해요소 카테고리 데이터가 없습니다.")
+        else:
+            st.warning("hazard_category 컬럼을 찾을 수 없습니다.")
+    
+    with c_col4:
+        st.subheader("관심항목 분석")
+        if 'interest_item' in df_filtered.columns:
+            interest_counts = df_filtered['interest_item'].value_counts()
+            fig4 = px.bar(
+                x=interest_counts.index.map({True: '관심항목', False: '일반항목'}),
+                y=interest_counts.values,
+                labels={'x': '항목 구분', 'y': '건수'},
+                color=interest_counts.values,
+                color_continuous_scale='Blues'
+            )
+            st.plotly_chart(fig4, use_container_width=True)
+        else:
+            st.info("interest_item 데이터를 확인할 수 없습니다.")
 
     # Data Table
     st.markdown("### 🔍 상세 데이터 (Raw Data)")

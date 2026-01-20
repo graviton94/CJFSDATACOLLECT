@@ -30,15 +30,18 @@ class FuzzyMatcher:
     3. Fuzzy match (similarity score using rapidfuzz)
     """
     
-    def __init__(self, similarity_threshold: int = 80):
+    def __init__(self, similarity_threshold: int = 80, long_text_threshold: int = 30):
         """
         Initialize the fuzzy matcher.
         
         Args:
             similarity_threshold: Minimum similarity score (0-100) for fuzzy matches.
                                  Default is 80, which means 80% similarity.
+            long_text_threshold: Character count threshold to trigger sentence scanning mode.
+                                Default is 30 characters.
         """
         self.similarity_threshold = similarity_threshold
+        self.long_text_threshold = long_text_threshold
     
     def _normalize_text(self, text: str) -> str:
         """
@@ -107,6 +110,48 @@ class FuzzyMatcher:
                         return reference_df.loc[idx]
         
         return None
+    
+    def _sentence_scan_match(self, search_term: str, reference_df: pd.DataFrame,
+                             match_columns: List[str]) -> Optional[pd.Series]:
+        """
+        Scan long text for presence of reference keywords (Reverse Lookup).
+        
+        This is specifically designed for long descriptions like FDA alerts:
+        "The sample analysis revealed high levels of Aflatoxin B1 in the product..."
+        
+        Strategy:
+        1. Iterate through ALL reference keywords in the DataFrame
+        2. Check if any keyword appears in the search term (case-insensitive)
+        3. Return the first match found
+        
+        Args:
+            search_term: Normalized long text to scan
+            reference_df: Reference DataFrame with keywords
+            match_columns: List of columns to extract keywords from
+            
+        Returns:
+            Matched row as pandas Series, or None if no match found
+        """
+        # Collect all possible keywords from reference data
+        best_match = None
+        best_match_length = 0  # Prefer longer matches (more specific)
+        
+        for col in match_columns:
+            if col in reference_df.columns:
+                for idx, ref_value in reference_df[col].items():
+                    ref_normalized = self._normalize_text(ref_value)
+                    if not ref_normalized:
+                        continue
+                    
+                    # Check if the keyword exists in the search term
+                    # Use word boundary check to avoid partial matches like "lead" in "misleading"
+                    if ref_normalized in search_term:
+                        # Prefer longer, more specific matches
+                        if len(ref_normalized) > best_match_length:
+                            best_match = reference_df.loc[idx]
+                            best_match_length = len(ref_normalized)
+        
+        return best_match
     
     def _fuzzy_match(self, search_term: str, reference_df: pd.DataFrame,
                      match_columns: List[str]) -> Optional[pd.Series]:
@@ -212,9 +257,13 @@ class FuzzyMatcher:
         Match raw hazard item to reference data using multi-strategy approach.
         
         Strategy order:
-        1. Exact match (fastest)
-        2. Keyword match (partial string)
-        3. Fuzzy match (similarity score)
+        1. For short text (≤ long_text_threshold): Use standard matching
+           - Exact match (fastest)
+           - Keyword match (partial string)
+           - Fuzzy match (similarity score)
+        2. For long text (> long_text_threshold): Use sentence scanning
+           - Scan for known keywords in the text (Reverse Lookup)
+           - Fall back to standard matching if no keywords found
         
         Args:
             raw_text: Raw hazard item from data source
@@ -228,7 +277,13 @@ class FuzzyMatcher:
             
         Example:
             >>> matcher = FuzzyMatcher()
+            >>> # Short text - standard matching
             >>> result = matcher.match_hazard_category("Aflatoxin B1", hazard_df)
+            >>> # Long text - sentence scanning
+            >>> result = matcher.match_hazard_category(
+            ...     "The sample analysis revealed high levels of Aflatoxin B1 in the product",
+            ...     hazard_df
+            ... )
             >>> print(result)
             {'category': '곰팡이독소', 'analyzable': True, 'interest': True}
         """
@@ -245,12 +300,26 @@ class FuzzyMatcher:
         # Columns to search in (more options for hazards)
         match_columns = ['KOR_NM', 'ENG_NM', 'ABRV', 'NCKNM', 'TESTITM_NM']
         
-        # Try matching strategies in order (early exit on first match)
-        matched_row = self._exact_match(search_term, hazard_ref_df, match_columns)
-        if matched_row is None:
-            matched_row = self._keyword_match(search_term, hazard_ref_df, match_columns)
-        if matched_row is None:
-            matched_row = self._fuzzy_match(search_term, hazard_ref_df, match_columns)
+        # Determine strategy based on text length
+        matched_row = None
+        
+        if len(search_term) > self.long_text_threshold:
+            # Long text: Use sentence scanning first (Reverse Lookup)
+            matched_row = self._sentence_scan_match(search_term, hazard_ref_df, match_columns)
+            
+            # If sentence scanning fails, fall back to standard matching
+            if matched_row is None:
+                matched_row = self._exact_match(search_term, hazard_ref_df, match_columns)
+            if matched_row is None:
+                matched_row = self._keyword_match(search_term, hazard_ref_df, match_columns)
+            # Skip fuzzy match for long text to avoid false positives
+        else:
+            # Short text: Use standard matching strategies
+            matched_row = self._exact_match(search_term, hazard_ref_df, match_columns)
+            if matched_row is None:
+                matched_row = self._keyword_match(search_term, hazard_ref_df, match_columns)
+            if matched_row is None:
+                matched_row = self._fuzzy_match(search_term, hazard_ref_df, match_columns)
         
         if matched_row is not None:
             # Extract output fields
@@ -280,7 +349,7 @@ def match_product_type(raw_text: str, product_ref_df: pd.DataFrame,
 
 
 def match_hazard_category(raw_text: str, hazard_ref_df: pd.DataFrame,
-                          similarity_threshold: int = 80) -> Dict[str, any]:
+                          similarity_threshold: int = 80, long_text_threshold: int = 30) -> Dict[str, any]:
     """
     Convenience function to match hazard category without creating a FuzzyMatcher instance.
     
@@ -288,9 +357,11 @@ def match_hazard_category(raw_text: str, hazard_ref_df: pd.DataFrame,
         raw_text: Raw hazard item from data source
         hazard_ref_df: Reference DataFrame with hazard classifications
         similarity_threshold: Minimum similarity score (0-100) for fuzzy matches
+        long_text_threshold: Character count threshold to trigger sentence scanning mode
         
     Returns:
         Dictionary with 'category', 'analyzable', and 'interest' fields
     """
-    matcher = FuzzyMatcher(similarity_threshold=similarity_threshold)
+    matcher = FuzzyMatcher(similarity_threshold=similarity_threshold, 
+                          long_text_threshold=long_text_threshold)
     return matcher.match_hazard_category(raw_text, hazard_ref_df)
