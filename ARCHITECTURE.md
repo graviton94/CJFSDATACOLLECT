@@ -1,40 +1,56 @@
 # 🏗️ System Architecture
 
-## 1. Overview
-The system follows a standard **ETL (Extract, Transform, Load)** pattern, optimized for lightweight execution on local servers or cloud containers.
+## 1. Data Pipeline Overview
 
 ```mermaid
 graph LR
-    A[Sources: FDA, RASFF, KR-API] -->|Ingest| B(Collectors)
-    B -->|Raw Data| C{Processors}
-    C -->|Normalize & Dedup| D[(Hub Parquet DB)]
-    D -->|Read| E[Streamlit Dashboard]
+    A[Data Sources] --> B[Collectors]
+    B --> C[Normalization & Lookup]
+    C --> D[Deduplication]
+    D --> E[Storage (Parquet)]
+    E --> F[Dashboard (Streamlit)]
 ```
+**A. Data Sources**
+- API: MFDS (OpenAPI)
+- Web Scraping: FDA (HTML Parsing), RASFF (SPA/Playwright), ImpFood (DOM/Playwright)
 
-## 2. Ingestion Strategy (Extract)
-🇪🇺 EU RASFF (Complex/Dynamic)
-- Challenge: The portal is a Single Page Application (SPA) utilizing heavy JavaScript.
-- Solution: Use Playwright to simulate a browser user.
-- Logic: Navigate to search page -> Wait for table load -> Parse visible rows -> Pagination.
+**B. Collectors (src/collectors/)**
+- Each collector inherits or implements a common interface logic.
+- Responsibility: Fetch raw data -> Parse -> Map to UNIFIED_SCHEMA.
+- Smart Enrichment:
+-- Calls ReferenceLoader to map Product Name -> Hierarchy (Top/Upper).
+-- Calls ReferenceLoader to map Hazard Item -> Category.
 
-🇺🇸 US FDA (Hierarchical/Static)
-- Challenge: Too many detail pages to scrape daily.
-- Solution: Count-Based CDC.
-  1. Scrape the "Country List" page first.
-  2. Compare current alert counts per country against data/state/fda_counts.json.
-  3. Only visit country detail pages where the count has increased.
+**C. Normalization (src/schema.py)**
+- Strict 13-Column Schema:
+    1. registration_date
+    2. data_source
+    3. source_detail (Unique Key)
+    4. product_type
+    5. top_level_product_type (Enriched)
+    6. upper_product_type (Enriched)
+    7. product_name
+    8. origin_country
+    9. notifying_country
+    10. hazard_category (Enriched)
+    11. hazard_item
+    12. analyzable (Enriched)
+    13. interest_item (Enriched)
 
-🇰🇷 KR MFDS (Structured)
-- Method: Standard REST API calls.
-- Logic: Iterate through service IDs (I2620, I0470, I0490) with pagination (1~1000, 1001~2000) until empty.
+**D. Storage Strategy (src/utils/storage.py)**
+- Format: Apache Parquet (snappy compression).
+- Location: data/hub/hub_data.parquet.
+- Logic: Append-only with deduplication check based on data_source + source_detail.
+---
 
-## 3. Transformation & Storage
-- Schema Mapping: All incoming data is mapped to Target Schema (16 Headers) defined in Project_Milestone.md.
-- Deduplication:
-  - Key: source_id + reference_number (or url).
-  -  New records are appended to hub_data.parquet.
-  - Existing records are updated only if critical fields change.
+## 2. Key Components Design
 
-## 4. UI Layer
-- Streamlit: Reads directly from Parquet using Pandas.
-- Optimization: Uses @st.cache_data to minimize disk I/O during user interaction.
+**Reference Data Lookup System**
+- File: data/reference/*.parquet
+- Logic:
+-- Product Lookup: Matches input string against KOR_NM or ENG_NM in master data to retrieve Hierarchy Names.
+-- Hazard Lookup: Matches input string against multiple columns (Name, Alias, Abbr) to retrieve Category.
+
+**Scheduler**
+- Uses schedule library for lightweight task management.
+- Runs collectors sequentially to avoid resource contention (especially for Headless Browsers).
