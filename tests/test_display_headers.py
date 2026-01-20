@@ -64,9 +64,9 @@ def test_reverse_mapping():
     reverse_headers = {v: k for k, v in DISPLAY_HEADERS.items()}
     
     # Verify all Korean headers can be reversed
-    for korean, english in DISPLAY_HEADERS.items():
-        assert reverse_headers[english] == korean, \
-            f"Reverse mapping failed for {korean} -> {english}"
+    for english, korean in DISPLAY_HEADERS.items():
+        assert reverse_headers[korean] == english, \
+            f"Reverse mapping failed for {english} -> {korean}"
     
     print("✓ Reverse mapping test passed")
 
