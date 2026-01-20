@@ -22,6 +22,134 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from src.scheduler import DataIngestionScheduler
 from src.schema import DISPLAY_HEADERS
 
+# 기준정보 테이블별 컬럼 헤더 매핑
+MASTER_HEADER_MAP = {
+    "품목유형": {
+        "LV": "레벨",
+        "PRDLST_CD": "품목코드",
+        "KOR_NM": "한글명",
+        "ENG_NM": "영문명",
+        "DFN": "정의",
+        "VALD_BEGN_DT": "유효개시일자",
+        "VALD_END_DT": "유효종료일자",
+        "HRNK_PRDLST_CD": "상위품목코드",
+        "HTRK_PRDLST_CD": "최상위품목코드",
+        "MXTR_PRDLST_YN": "조합품목여부",
+        "ATTRB_SEQ": "속성일련번호",
+        "PIAM_KOR_NM": "속성한글명",
+        "PRDLST_YN": "품목여부",
+        "UPDT_PRVNS": "수정사유",
+        "USE_YN": "사용여부",
+        "RM": "비고",
+        "FDGRP_YN": "식품군여부",
+        "LAST_UPDT_DTM": "최종수정일",
+        "CHD_SMBL_FD_YN": "어린이기호식품 여부",
+    },
+    "시험항목": {
+        "TESTITM_CD": "시험항목코드",
+        "KOR_NM": "한글명",
+        "ENG_NM": "영문명",
+        "ABRV": "약어",
+        "NCKNM": "이명",
+        "TESTITM_NM": "시험항목명",
+        "TESTITM_LCLAS_CD": "시험항목대분류시퀀스",
+        "L_ATTRB_CD": "시험항목대분류코드",
+        "L_KOR_NM": "대분류한글명",
+        "TESTITM_MLSFC_CD": "시험항목중분류시퀀스",
+        "M_ATTRB_CD": "시험항목중분류코드",
+        "M_KOR_NM": "중분류한글명",
+        "REMN_MTTR_DFN": "잔류물질정의",
+        "USE_YN": "사용여부",
+        "LAST_UPDT_DTM": "최종수정일시",
+    },
+    "개별기준규격": {
+        "INDV_SPEC_SEQ": "개별기준규격일련번호",
+        "PRDLST_CD": "품목분류코드",
+        "PRDLST_CD_NM": "품목명",
+        "TESTITM_CD": "시험항목코드",
+        "TESTITM_NM": "시험항목명",
+        "FNPRT_ITM_NM": "세부항목명",
+        "ATTRB_SEQ": "단서조항일련번호",
+        "PIAM_KOR_NM": "단서조항명",
+        "SPEC_VAL": "기준규격",
+        "SPEC_VAL_SUMUP": "기준규격요약",
+        "VALD_BEGN_DT": "유효개시일",
+        "VALD_END_DT": "유효종료일",
+        "SORC": "출처",
+        "VALD_MANLI": "유효자리",
+        "JDGMNT_FOM_CD": "판정형식코드",
+        "A079_FNPRT_CD_NM": "판정형식명",
+        "MXMM_VAL": "최대값",
+        "MXMM_VAL_DVS_CD": "최대값구분코드",
+        "A081_FNPRT_CD_NM": "최대값구분명",
+        "MIMM_VAL": "최소값",
+        "MIMM_VAL_DVS_CD": "최소값구분코드",
+        "A080_FNPRT_CD_NM": "최소값구분명",
+        "CHOIC_FIT": "선택형적합코드",
+        "A082_CF_FNPRT_CD_NM": "선택형적합명",
+        "CHOIC_IMPROPT": "선택형부적합코드",
+        "A082_CI_FNPRT_CD_NM": "선택형부적합명",
+        "MCRRGNSM_2N": "미생물2N",
+        "MCRRGNSM_2C": "미생물2C",
+        "MCRRGNSM_2M": "미생물2M",
+        "MCRRGNSM_3M": "미생물3M",
+        "FNPRT_ITM_INCLS_YN": "세부항목포함여부",
+        "INJRY_YN": "위해여부",
+        "EMPHS_PRSEC_TESTITM_YN": "중점검사시험항목여부",
+        "MONTRNG_TESTITM_YN": "감시시험항목여부",
+        "RVLV_ELSE_TESTITM_YN": "공전외시험항목여부",
+        "NTR_PRSEC_ITM_YN": "자품검사시험항목여부",
+        "UNIT_CD": "단위코드",
+        "UNIT_NM": "단위명",
+        "UPDT_PRVNS": "수정사유",
+        "LAST_UPDT_DTM": "최종수정일시",
+    },
+    "공통기준규격": {
+        "CMMN_SPEC_SEQ": "공통기준종류코드일련번호",
+        "CMMN_SPEC_CD": "공통기준종류코드",
+        "SPEC_NM": "공통기준종류명",
+        "PRDLST_CD": "품목분류코드",
+        "PRDLST_CD_NM": "품목명",
+        "TESTITM_CD": "시험항목코드",
+        "TESTITM_NM": "시험항목명",
+        "FNPRT_ITM_NM": "세부항목명",
+        "ATTRB_SEQ": "단서조항일련번호",
+        "PIAM_KOR_NM": "단서조항명",
+        "SPEC_VAL": "기준규격",
+        "SPEC_VAL_SUMUP": "기준규격요약",
+        "VALD_BEGN_DT": "유효개시일",
+        "VALD_END_DT": "유효종료일",
+        "SORC": "출처",
+        "VALD_MANLI": "유효자리",
+        "JDGMNT_FOM_CD": "판정형식코드",
+        "A079_FNPRT_CD_NM": "판정형식명",
+        "MXMM_VAL": "최대값",
+        "MXMM_VAL_DVS_CD": "최대값구분코드",
+        "A081_FNPRT_CD_NM": "최대값구분명",
+        "MIMM_VAL": "최소값",
+        "MIMM_VAL_DVS_CD": "최소값구분코드",
+        "A080_FNPRT_CD_NM": "최소값구분명",
+        "CHOIC_FIT": "선택형적합코드",
+        "A082_CF_FNPRT_CD_NM": "선택형적합명",
+        "CHOIC_IMPROPT": "선택형부적합코드",
+        "A082_CI_FNPRT_CD_NM": "선택형부적합명",
+        "MCRRGNSM_2N": "미생물2N",
+        "MCRRGNSM_2C": "미생물2C",
+        "MCRRGNSM_2M": "미생물2M",
+        "MCRRGNSM_3M": "미생물3M",
+        "FNPRT_ITM_INCLS_YN": "세부항목포함여부",
+        "INJRY_YN": "위해여부",
+        "EMPHS_PRSEC_TESTITM_YN": "중점검사시험항목여부",
+        "MONTRNG_TESTITM_YN": "감시시험항목여부",
+        "RVLV_ELSE_TESTITM_YN": "공전외시험항목여부",
+        "NTR_PRSEC_ITM_YN": "자품검사시험항목여부",
+        "UNIT_CD": "단위코드",
+        "UNIT_NM": "단위명",
+        "UPDT_PRVNS": "수정사유",
+        "LAST_UPDT_DTM": "최종수정일시",
+    },
+}
+
 # Page configuration
 st.set_page_config(
     page_title="Global Food Safety Intelligence",
@@ -97,6 +225,7 @@ def render_master_data_tab():
         list(FILES.keys()),
         help="수정하려는 기준정보 파일을 선택하세요"
     )
+    header_map = MASTER_HEADER_MAP.get(selected_name, {})
     file_path = REF_DIR / FILES[selected_name]
     
     # 2. Load data
@@ -135,7 +264,7 @@ def render_master_data_tab():
         
         # Apply Korean headers if columns match UNIFIED_SCHEMA
         display_df = df_display.copy()
-        display_df = display_df.rename(columns=DISPLAY_HEADERS)
+        display_df = display_df.rename(columns=header_map)
         
         edited_df = st.data_editor(
             display_df,
@@ -146,7 +275,7 @@ def render_master_data_tab():
         )
         
         # Convert back to English column names for saving
-        reverse_headers = {v: k for k, v in DISPLAY_HEADERS.items()}
+        reverse_headers = {v: k for k, v in header_map.items()}
         edited_df = edited_df.rename(columns=reverse_headers)
         
         # 5. Save logic
