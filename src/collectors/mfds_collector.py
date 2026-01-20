@@ -98,15 +98,18 @@ class MFDSCollector:
         # 매칭할 컬럼들 (KOR_NM, ENG_NM)
         match_columns = ['KOR_NM', 'ENG_NM']
         
-        # 각 컬럼에서 매칭 시도
+        # Normalize search term once
+        search_term = str(product_type).strip().lower()
+        
+        # 각 컬럼에서 매칭 시도 (early exit on first match)
         matched_row = None
         for col in match_columns:
             if col in self.product_ref_df.columns:
                 # 정확히 일치하는 행 찾기 (대소문자 구분 없이)
-                mask = self.product_ref_df[col].astype(str).str.strip().str.lower() == str(product_type).strip().lower()
+                mask = self.product_ref_df[col].astype(str).str.strip().str.lower() == search_term
                 if mask.any():
                     matched_row = self.product_ref_df[mask].iloc[0]
-                    break
+                    break  # Early exit on first match
         
         if matched_row is not None:
             # 출력 필드 추출: HTRK_PRDLST_CD, HRRK_PRDLST_CD
@@ -137,15 +140,18 @@ class MFDSCollector:
         # 매칭할 컬럼들
         match_columns = ['KOR_NM', 'ENG_NM', 'ABRV', 'NCKNM', 'TESTITM_NM']
         
-        # 각 컬럼에서 매칭 시도
+        # Normalize search term once
+        search_term = str(hazard_item).strip().lower()
+        
+        # 각 컬럼에서 매칭 시도 (early exit on first match)
         matched_row = None
         for col in match_columns:
             if col in self.hazard_ref_df.columns:
                 # 정확히 일치하는 행 찾기 (대소문자 구분 없이)
-                mask = self.hazard_ref_df[col].astype(str).str.strip().str.lower() == str(hazard_item).strip().lower()
+                mask = self.hazard_ref_df[col].astype(str).str.strip().str.lower() == search_term
                 if mask.any():
                     matched_row = self.hazard_ref_df[mask].iloc[0]
-                    break
+                    break  # Early exit on first match
         
         if matched_row is not None:
             # 출력 필드 추출: M_KOR_NM, ANALYZABLE, INTEREST_ITEM
