@@ -31,39 +31,27 @@ class MFDSCollector:
         # [Smart Lookup] 기준정보 로드 (메모리 캐싱)
         # ---------------------------------------------------------
         print("📥 기준정보(Reference Data) 로드 중...")
-        self.product_ref = self._load_reference("product_code_master.parquet", "KOR_NM")
-        self.hazard_ref = self._load_reference("hazard_code_master.parquet", "TESTITM_NM")
+        self.product_ref_df = self._load_reference_df("product_code_master.parquet")
+        self.hazard_ref_df = self._load_reference_df("hazard_code_master.parquet")
         self.country_ref = self._load_country_reference()
         print("✅ 기준정보 로드 완료.")
 
-    def _load_reference(self, filename, index_col):
-        """Parquet 파일을 읽어 검색에 최적화된 Dictionary로 변환 (안전 모드)"""
+    def _load_reference_df(self, filename):
+        """
+        Parquet 파일을 DataFrame으로 로드 (Multi-column 검색 지원)
+        """
         file_path = self.REF_DIR / filename
         if not file_path.exists():
             print(f"   ⚠️ Warning: {filename} 파일이 없습니다. Lookup 기능이 제한됩니다.")
-            return {}
+            return pd.DataFrame()
         
         try:
             df = pd.read_parquet(file_path)
-            
-            # [수정] 인덱스 설정 전, 컬럼 존재 여부 확인 및 중복 제거 강화
-            if index_col not in df.columns:
-                print(f"   ⚠️ Key Column '{index_col}' not found in {filename}. Columns: {df.columns.tolist()}")
-                return {}
-            
-            # NaN 제거 및 문자열 변환
-            df = df.dropna(subset=[index_col])
-            df[index_col] = df[index_col].astype(str)
-            
-            # 중복 제거 (첫 번째 값 유지)
-            df = df.drop_duplicates(subset=[index_col])
-            
-            # 딕셔너리 변환
-            return df.set_index(index_col).to_dict('index')
-            
+            print(f"   📚 {filename} 로드 완료 (총 {len(df)}건, 컬럼: {df.columns.tolist()})")
+            return df
         except Exception as e:
             print(f"   ❌ {filename} 로드 실패: {e}")
-            return {}
+            return pd.DataFrame()
 
     def fetch_service(self, service_id, start_idx, end_idx):
         """API 호출 및 JSON 응답 반환"""
@@ -91,25 +79,80 @@ class MFDSCollector:
         return date_str.replace('.', '-')
 
     def _lookup_product_info(self, product_type):
-        """품목유형 이름으로 상위/최상위 유형 조회"""
+        """
+        품목유형 이름으로 상위/최상위 유형 조회
+        
+        Logic 1: Product Hierarchy Lookup
+        - Input: product_type (from API)
+        - Reference: product_code_master.parquet
+        - Matching Rule: Find row where product_type matches KOR_NM OR ENG_NM
+        - Output Mapping:
+          - top_level_product_type ← HTRK_PRDLST_CD (from reference)
+          - upper_product_type ← HRRK_PRDLST_CD (from reference)
+        """
         info = {"top": None, "upper": None}
-        if product_type in self.product_ref:
-            ref_data = self.product_ref[product_type]
-            # 식약처 백서 필드명에 맞춰 매핑 (필드명은 실제 백서 데이터 확인 후 조정 필요)
-            # 통상: GR_NM(군), PRDLST_CL_NM(대분류) 등
-            info["top"] = ref_data.get("GR_NM") or ref_data.get("HRNK_PRDLST_NM") 
-            info["upper"] = ref_data.get("PRDLST_CL_NM")
+        
+        if self.product_ref_df.empty or not product_type:
+            return info
+        
+        # 매칭할 컬럼들 (KOR_NM, ENG_NM)
+        match_columns = ['KOR_NM', 'ENG_NM']
+        
+        # 각 컬럼에서 매칭 시도
+        matched_row = None
+        for col in match_columns:
+            if col in self.product_ref_df.columns:
+                # 정확히 일치하는 행 찾기 (대소문자 구분 없이)
+                mask = self.product_ref_df[col].astype(str).str.strip().str.lower() == str(product_type).strip().lower()
+                if mask.any():
+                    matched_row = self.product_ref_df[mask].iloc[0]
+                    break
+        
+        if matched_row is not None:
+            # 출력 필드 추출: HTRK_PRDLST_CD, HRRK_PRDLST_CD
+            info["top"] = matched_row.get("HTRK_PRDLST_CD") if "HTRK_PRDLST_CD" in matched_row.index else None
+            info["upper"] = matched_row.get("HRRK_PRDLST_CD") if "HRRK_PRDLST_CD" in matched_row.index else None
+        
         return info
 
     def _lookup_hazard_info(self, hazard_item):
-        """시험항목 이름으로 분류(카테고리) 조회"""
-        info = {"category": "Uncategorized", "analyzable": False, "interest": False}
-        if hazard_item in self.hazard_ref:
-            ref_data = self.hazard_ref[hazard_item]
-            # 백서 필드명 가정: LCLS_NM(대분류)
-            info["category"] = ref_data.get("LCLS_NM", "Uncategorized")
-            # 백서에 '분석가능여부' 등이 있다면 여기서 매핑
-            # info["analyzable"] = ref_data.get("IS_ANALYZABLE") == 'Y'
+        """
+        시험항목 이름으로 분류(카테고리) 조회
+        
+        Logic 2: Hazard Classification Lookup
+        - Input: hazard_item (from API)
+        - Reference: hazard_code_master.parquet
+        - Matching Rule: Find row where hazard_item matches ANY of:
+          ['KOR_NM', 'ENG_NM', 'ABRV', 'NCKNM', 'TESTITM_NM']
+        - Output Mapping:
+          - hazard_category ← M_KOR_NM (from reference)
+          - analyzable ← ANALYZABLE (from reference)
+          - interest_item ← INTEREST_ITEM (from reference)
+        """
+        info = {"category": None, "analyzable": False, "interest": False}
+        
+        if self.hazard_ref_df.empty or not hazard_item:
+            return info
+        
+        # 매칭할 컬럼들
+        match_columns = ['KOR_NM', 'ENG_NM', 'ABRV', 'NCKNM', 'TESTITM_NM']
+        
+        # 각 컬럼에서 매칭 시도
+        matched_row = None
+        for col in match_columns:
+            if col in self.hazard_ref_df.columns:
+                # 정확히 일치하는 행 찾기 (대소문자 구분 없이)
+                mask = self.hazard_ref_df[col].astype(str).str.strip().str.lower() == str(hazard_item).strip().lower()
+                if mask.any():
+                    matched_row = self.hazard_ref_df[mask].iloc[0]
+                    break
+        
+        if matched_row is not None:
+            # 출력 필드 추출: M_KOR_NM, ANALYZABLE, INTEREST_ITEM
+            info["category"] = matched_row.get("M_KOR_NM") if "M_KOR_NM" in matched_row.index else None
+            info["analyzable"] = bool(matched_row.get("ANALYZABLE", False)) if "ANALYZABLE" in matched_row.index else False
+            info["interest"] = bool(matched_row.get("INTEREST_ITEM", False)) if "INTEREST_ITEM" in matched_row.index else False
+        
         return info
 
     def collect_i2620(self):
