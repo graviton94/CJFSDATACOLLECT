@@ -37,6 +37,7 @@ def test_storage_filters_obsolete_columns():
                 'notifying_country': 'Germany',
                 'hazard_category': 'Chemical',
                 'hazard_item': 'Test Hazard',
+                'full_text': '',
                 'analyzable': True,
                 'interest_item': False,
                 # Obsolete columns that should be filtered out
@@ -86,6 +87,7 @@ def test_save_to_hub_enforces_schema():
                 'notifying_country': 'Korea',
                 'hazard_category': 'Biological',
                 'hazard_item': 'Bacteria',
+                'full_text': '',
                 'analyzable': True,
                 'interest_item': True,
                 # Obsolete columns

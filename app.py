@@ -3,12 +3,17 @@ Streamlit dashboard for food safety risk analysis.
 Provides unified visualization of data from all sources and master data management.
 """
 
+# Fix Windows Asyncio Event Loop Policy for Playwright compatibility
+import sys
+import asyncio
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
 import streamlit as st
 import pandas as pd
 import plotly.express as px
 from pathlib import Path
 from datetime import datetime, timedelta
-import sys
 import os
 from dotenv import load_dotenv
 

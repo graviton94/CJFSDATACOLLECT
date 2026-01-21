@@ -1,7 +1,7 @@
 """
 Unified schema for food safety risk data from multiple sources.
 Normalizes data from EU RASFF, FDA Import Alerts, and Korea MFDS.
-Follows the 13-column standard defined below.
+Follows the 14-column standard defined below.
 """
 
 import pandas as pd
@@ -10,7 +10,7 @@ from datetime import datetime
 import numpy as np
 
 # ---------------------------------------------------------
-# 1. Unified Schema Definition (The 13 Commandments)
+# 1. Unified Schema Definition (The 14 Commandments)
 # 모든 수집 데이터는 최종적으로 이 컬럼 구성을 따라야 합니다.
 # ---------------------------------------------------------
 UNIFIED_SCHEMA = [
@@ -25,6 +25,7 @@ UNIFIED_SCHEMA = [
     "notifying_country",        # 통보국
     "hazard_category",          # 분류(카테고리) (Lookup)
     "hazard_item",              # 시험항목 (위해정보 원본)
+    "full_text",                # 전문 (원본 본문, I0490/I2810에서 사용)
     "analyzable",               # 분석가능여부 (Boolean Lookup)
     "interest_item"             # 관심항목 (Boolean Lookup)
 ]
@@ -45,6 +46,7 @@ DISPLAY_HEADERS = {
     "notifying_country": "통보국",
     "hazard_category": "분류(카테고리)",
     "hazard_item": "시험항목",
+    "full_text": "전문",
     "analyzable": "분석가능여부",
     "interest_item": "관심항목"
 }
@@ -64,7 +66,7 @@ def get_empty_dataframe() -> pd.DataFrame:
 
 def validate_schema(df: pd.DataFrame) -> pd.DataFrame:
     """
-    DataFrame이 13개 컬럼 규칙을 준수하도록 강제 변환합니다.
+    DataFrame이 14개 컬럼 규칙을 준수하도록 강제 변환합니다.
     """
     # 명시적 복사로 SettingWithCopyWarning 방지
     df = df.copy()

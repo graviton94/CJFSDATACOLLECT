@@ -201,14 +201,20 @@ class FuzzyMatcher:
         2. Keyword match (partial string)
         3. Fuzzy match (similarity score)
         
+        Hierarchy Lookup Logic:
+        - Find the product row by matching KOR_NM or ENG_NM
+        - Get HTRK_PRDLST_CD (top-level code) from the matched row
+        - Look up the row where PRDLST_CD == HTRK_PRDLST_CD to get the top-level name
+        - Similarly for HRNK_PRDLST_CD (upper code) -> lookup PRDLST_CD to get upper name
+        
         Args:
             raw_text: Raw product type from data source
             product_ref_df: Reference DataFrame with product hierarchy
             
         Returns:
             Dictionary with keys:
-            - 'top': Top-level product type (HTRK_PRDLST_NM or GR_NM)
-            - 'upper': Upper product type (HRRK_PRDLST_NM or PRDLST_CL_NM)
+            - 'top': Top-level product type name (from HTRK_PRDLST_CD lookup)
+            - 'upper': Upper product type name (from HRNK_PRDLST_CD lookup)
             
         Example:
             >>> matcher = FuzzyMatcher()
@@ -237,18 +243,47 @@ class FuzzyMatcher:
             matched_row = self._fuzzy_match(search_term, product_ref_df, match_columns)
         
         if matched_row is not None:
-            # Extract output fields: NAMES instead of CODES
-            # Try HTRK_PRDLST_NM first, fallback to GR_NM
-            if "HTRK_PRDLST_NM" in matched_row.index and pd.notna(matched_row.get("HTRK_PRDLST_NM")):
-                info["top"] = matched_row.get("HTRK_PRDLST_NM")
-            elif "GR_NM" in matched_row.index and pd.notna(matched_row.get("GR_NM")):
-                info["top"] = matched_row.get("GR_NM")
+            # NEW LOGIC: Lookup hierarchy codes to get names
             
-            # Try HRRK_PRDLST_NM first, fallback to PRDLST_CL_NM
-            if "HRRK_PRDLST_NM" in matched_row.index and pd.notna(matched_row.get("HRRK_PRDLST_NM")):
-                info["upper"] = matched_row.get("HRRK_PRDLST_NM")
-            elif "PRDLST_CL_NM" in matched_row.index and pd.notna(matched_row.get("PRDLST_CL_NM")):
-                info["upper"] = matched_row.get("PRDLST_CL_NM")
+            # 1. Top-level product type: Get HTRK_PRDLST_CD and lookup its name
+            if "HTRK_PRDLST_CD" in matched_row.index and pd.notna(matched_row.get("HTRK_PRDLST_CD")):
+                top_code = matched_row.get("HTRK_PRDLST_CD")
+                # Find row where PRDLST_CD == top_code
+                top_row_mask = product_ref_df["PRDLST_CD"] == top_code
+                if top_row_mask.any():
+                    top_row = product_ref_df[top_row_mask].iloc[0]
+                    # Prefer KOR_NM, fallback to ENG_NM
+                    if pd.notna(top_row.get("KOR_NM")):
+                        info["top"] = top_row.get("KOR_NM")
+                    elif pd.notna(top_row.get("ENG_NM")):
+                        info["top"] = top_row.get("ENG_NM")
+            
+            # Fallback: Try direct column names if lookup fails
+            if info["top"] is None:
+                if "HTRK_PRDLST_NM" in matched_row.index and pd.notna(matched_row.get("HTRK_PRDLST_NM")):
+                    info["top"] = matched_row.get("HTRK_PRDLST_NM")
+                elif "GR_NM" in matched_row.index and pd.notna(matched_row.get("GR_NM")):
+                    info["top"] = matched_row.get("GR_NM")
+            
+            # 2. Upper product type: Get HRNK_PRDLST_CD and lookup its name
+            if "HRNK_PRDLST_CD" in matched_row.index and pd.notna(matched_row.get("HRNK_PRDLST_CD")):
+                upper_code = matched_row.get("HRNK_PRDLST_CD")
+                # Find row where PRDLST_CD == upper_code
+                upper_row_mask = product_ref_df["PRDLST_CD"] == upper_code
+                if upper_row_mask.any():
+                    upper_row = product_ref_df[upper_row_mask].iloc[0]
+                    # Prefer KOR_NM, fallback to ENG_NM
+                    if pd.notna(upper_row.get("KOR_NM")):
+                        info["upper"] = upper_row.get("KOR_NM")
+                    elif pd.notna(upper_row.get("ENG_NM")):
+                        info["upper"] = upper_row.get("ENG_NM")
+            
+            # Fallback: Try direct column names if lookup fails
+            if info["upper"] is None:
+                if "HRNK_PRDLST_NM" in matched_row.index and pd.notna(matched_row.get("HRNK_PRDLST_NM")):
+                    info["upper"] = matched_row.get("HRNK_PRDLST_NM")
+                elif "PRDLST_CL_NM" in matched_row.index and pd.notna(matched_row.get("PRDLST_CL_NM")):
+                    info["upper"] = matched_row.get("PRDLST_CL_NM")
         
         return info
     
@@ -328,6 +363,59 @@ class FuzzyMatcher:
             info["interest"] = bool(matched_row.get("INTEREST_ITEM", False)) if "INTEREST_ITEM" in matched_row.index else False
         
         return info
+    
+    def extract_hazard_from_text(self, full_text: str, hazard_ref_df: pd.DataFrame) -> Optional[str]:
+        """
+        Extract the best matching hazard name from long text.
+        
+        This method is specifically designed for I0490/I2810 service IDs where the
+        hazard information is embedded in a long sentence. It scans the text for
+        known hazard keywords and returns the most specific match found.
+        
+        Strategy:
+        1. Normalize the input text (lowercase, strip whitespace)
+        2. Scan through all hazard reference data
+        3. Find the longest matching keyword (more specific is better)
+        4. Return the standardized hazard name (KOR_NM or ENG_NM)
+        
+        Args:
+            full_text: Long text containing hazard information
+            hazard_ref_df: Reference DataFrame with hazard master data
+            
+        Returns:
+            Standardized hazard name (KOR_NM or ENG_NM) if found, None otherwise
+            
+        Example:
+            >>> matcher = FuzzyMatcher()
+            >>> text = "이물(곤충)이 혼입된 제품으로 확인되어 회수 조치합니다"
+            >>> result = matcher.extract_hazard_from_text(text, hazard_df)
+            >>> print(result)
+            '이물'
+        """
+        if not full_text or hazard_ref_df.empty:
+            return None
+        
+        # Normalize search term
+        search_term = self._normalize_text(full_text)
+        if not search_term:
+            return None
+        
+        # Columns to search in (more options for hazards)
+        match_columns = ['KOR_NM', 'ENG_NM', 'ABRV', 'NCKNM', 'TESTITM_NM']
+        
+        # Use sentence scanning to find the best match
+        matched_row = self._sentence_scan_match(search_term, hazard_ref_df, match_columns)
+        
+        if matched_row is not None:
+            # Prefer Korean name, fall back to English name
+            if "KOR_NM" in matched_row.index and pd.notna(matched_row.get("KOR_NM")):
+                return matched_row.get("KOR_NM")
+            elif "ENG_NM" in matched_row.index and pd.notna(matched_row.get("ENG_NM")):
+                return matched_row.get("ENG_NM")
+            elif "TESTITM_NM" in matched_row.index and pd.notna(matched_row.get("TESTITM_NM")):
+                return matched_row.get("TESTITM_NM")
+        
+        return None
 
 
 # Convenience functions for backward compatibility with existing code

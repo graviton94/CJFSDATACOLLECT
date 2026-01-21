@@ -94,9 +94,15 @@ class MFDSCollector:
           1. Exact match (fastest)
           2. Keyword/partial match (handles "Frozen Shrimp" vs "Shrimp")
           3. Fuzzy similarity match (handles typos and variations)
+        - Hierarchy Lookup:
+          1. Find matched row by KOR_NM or ENG_NM
+          2. Get HTRK_PRDLST_CD (top-level code) from matched row
+          3. Lookup PRDLST_CD == HTRK_PRDLST_CD to get top-level name
+          4. Get HRNK_PRDLST_CD (upper code) from matched row
+          5. Lookup PRDLST_CD == HRNK_PRDLST_CD to get upper name
         - Output Mapping:
-          - top_level_product_type ← HTRK_PRDLST_NM or GR_NM (from reference)
-          - upper_product_type ← HRRK_PRDLST_NM or PRDLST_CL_NM (from reference)
+          - top_level_product_type ← Name of row where PRDLST_CD == HTRK_PRDLST_CD
+          - upper_product_type ← Name of row where PRDLST_CD == HRNK_PRDLST_CD
         """
         return self.fuzzy_matcher.match_product_type(product_type, self.product_ref_df)
 
@@ -155,7 +161,8 @@ class MFDSCollector:
                     # 3. 상세 출처 생성
                     source_detail = f"{service_id}-{unique_seq}" if unique_seq else f"{service_id}-UNKNOWN"
                     
-                    # 4. 통합 스키마 매핑 (13 Columns Strict)
+                    # 4. 통합 스키마 매핑 (14 Columns Strict)
+                    # I2620: Keep existing logic, full_text is None
                     record = {
                         "registration_date": reg_date,
                         "data_source": "MFDS",
@@ -168,6 +175,7 @@ class MFDSCollector:
                         "notifying_country": "South Korea",
                         "hazard_category": hazard_info["category"],
                         "hazard_item": hazard_item,
+                        "full_text": None,  # I2620 does not use full_text
                         "analyzable": hazard_info["analyzable"],
                         "interest_item": hazard_info["interest"]
                     }
@@ -190,6 +198,7 @@ class MFDSCollector:
     def collect_i0490(self):
         """
         [I0490] 회수판매중지 정보 수집 로직
+        NEW LOGIC: Store raw text in full_text, extract hazard_item using fuzzy matching
         """
         service_id = "I0490"
         print(f"🚀 [I0490] 회수판매중지 정보 수집 시작...")
@@ -219,14 +228,21 @@ class MFDSCollector:
                     # 2. 날짜 정규화: YYYY-MM-DD HH:MM:SS -> YYYY-MM-DD (첫 10글자만)
                     reg_date = raw_date[:10] if raw_date else None
                     
-                    # 3. 데이터 정제 & Lookup
-                    prod_info = self._lookup_product_info(product_type)
-                    hazard_info = self._lookup_hazard_info(recall_reason)
+                    # 3. NEW LOGIC: Extract hazard_item from full_text using fuzzy matching
+                    full_text = recall_reason  # Store the original text
+                    extracted_hazard = self.fuzzy_matcher.extract_hazard_from_text(full_text, self.hazard_ref_df)
                     
-                    # 4. 상세 출처 생성
+                    # Use extracted hazard if found, otherwise use original text
+                    hazard_item = extracted_hazard if extracted_hazard else recall_reason
+                    
+                    # 4. 데이터 정제 & Lookup
+                    prod_info = self._lookup_product_info(product_type)
+                    hazard_info = self._lookup_hazard_info(hazard_item)
+                    
+                    # 5. 상세 출처 생성
                     source_detail = f"{service_id}-{unique_seq}" if unique_seq else f"{service_id}-UNKNOWN"
                     
-                    # 5. 통합 스키마 매핑 (13 Columns Strict)
+                    # 6. 통합 스키마 매핑 (14 Columns Strict)
                     record = {
                         "registration_date": reg_date,
                         "data_source": "MFDS",
@@ -238,7 +254,8 @@ class MFDSCollector:
                         "origin_country": "South Korea",  # 국내식품 회수
                         "notifying_country": "South Korea",
                         "hazard_category": hazard_info["category"],
-                        "hazard_item": recall_reason,
+                        "hazard_item": hazard_item,  # Extracted or original
+                        "full_text": full_text,  # Store original text
                         "analyzable": hazard_info["analyzable"],
                         "interest_item": hazard_info["interest"]
                     }
@@ -324,6 +341,7 @@ class MFDSCollector:
         """
         [I2810] 해외 위해식품 회수정보 수집 로직
         데이터가 BDT 필드의 비정형 텍스트에 포함되어 있어 정규식 파싱이 필요함
+        NEW LOGIC: Store raw text in full_text, extract hazard_item using fuzzy matching
         """
         service_id = "I2810"
         print(f"🚀 [I2810] 해외 위해식품 회수정보 수집 시작...")
@@ -346,7 +364,7 @@ class MFDSCollector:
                     # 1. 필드 추출
                     raw_date = row.get("CRET_DTM", "")  # 등록일 (YYYYMMDD)
                     product_name = row.get("TITL", "")  # 제품명
-                    hazard_item = row.get("DETECT_TITL", "")  # 위해물질
+                    hazard_text = row.get("DETECT_TITL", "")  # 위해물질 (원본)
                     notify_no = row.get("NTCTXT_NO", "")  # 통지번호
                     bdt_text = row.get("BDT", "")  # 비정형 텍스트 (지역 추출 대상)
                     
@@ -356,17 +374,24 @@ class MFDSCollector:
                     else:
                         reg_date = None
                     
-                    # 3. BDT에서 원산지 추출 (정규식)
+                    # 3. NEW LOGIC: Extract hazard_item from full_text using fuzzy matching
+                    # Combine hazard_text and BDT for more comprehensive extraction
+                    full_text = f"{hazard_text} {bdt_text}".strip()
+                    extracted_hazard = self.fuzzy_matcher.extract_hazard_from_text(full_text, self.hazard_ref_df)
+                    
+                    # Use extracted hazard if found, otherwise use original hazard_text
+                    hazard_item = extracted_hazard if extracted_hazard else hazard_text
+                    
+                    # 4. BDT에서 원산지 추출 (정규식)
                     origin_country = self._extract_origin_from_bdt(bdt_text)
                     
-                    # 4. Lookup을 통한 분류 정보 조회
-                    # 제품유형은 고정값이므로 lookup 스킵
+                    # 5. Lookup을 통한 분류 정보 조회
                     hazard_info = self._lookup_hazard_info(hazard_item)
                     
-                    # 5. 상세 출처 생성
+                    # 6. 상세 출처 생성
                     source_detail = f"{service_id}-{notify_no}" if notify_no else f"{service_id}-UNKNOWN"
                     
-                    # 6. 통합 스키마 매핑 (13 Columns Strict)
+                    # 7. 통합 스키마 매핑 (14 Columns Strict)
                     record = {
                         "registration_date": reg_date,
                         "data_source": "MFDS",
@@ -378,7 +403,8 @@ class MFDSCollector:
                         "origin_country": origin_country,  # BDT에서 추출
                         "notifying_country": "South Korea",  # 고정값 (MFDS)
                         "hazard_category": hazard_info["category"],
-                        "hazard_item": hazard_item,
+                        "hazard_item": hazard_item,  # Extracted or original
+                        "full_text": full_text,  # Store original text
                         "analyzable": hazard_info["analyzable"],
                         "interest_item": hazard_info["interest"]
                     }
