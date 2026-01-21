@@ -50,7 +50,7 @@ class RASFFCollector:
                         except:
                             reg_date = datetime.now().strftime("%Y-%m-%d")
                             
-                        # 13개 컬럼 매핑
+                        # 14개 컬럼 매핑
                         records.append({
                             "registration_date": reg_date,
                             "data_source": "RASFF",
@@ -63,6 +63,7 @@ class RASFFCollector:
                             "notifying_country": "EU Member States",
                             "hazard_category": "Uncategorized",
                             "hazard_item": subject, # 상세 내용을 위해 Subject 중복 사용
+                            "full_text": None,  # RASFF does not provide full text context in current implementation
                             "analyzable": False,
                             "interest_item": False
                         })
