@@ -10,7 +10,7 @@ from datetime import datetime
 import numpy as np
 
 # ---------------------------------------------------------
-# 1. Unified Schema Definition (The 13 Commandments)
+# 1. Unified Schema Definition (The 14 Commandments)
 # 모든 수집 데이터는 최종적으로 이 컬럼 구성을 따라야 합니다.
 # ---------------------------------------------------------
 UNIFIED_SCHEMA = [
@@ -25,6 +25,7 @@ UNIFIED_SCHEMA = [
     "notifying_country",        # 통보국
     "hazard_category",          # 분류(카테고리) (Lookup)
     "hazard_item",              # 시험항목 (위해정보 원본)
+    "full_text",                # 전문 (원본 본문, I0490/I2810에서 사용)
     "analyzable",               # 분석가능여부 (Boolean Lookup)
     "interest_item"             # 관심항목 (Boolean Lookup)
 ]
@@ -45,6 +46,7 @@ DISPLAY_HEADERS = {
     "notifying_country": "통보국",
     "hazard_category": "분류(카테고리)",
     "hazard_item": "시험항목",
+    "full_text": "전문",
     "analyzable": "분석가능여부",
     "interest_item": "관심항목"
 }

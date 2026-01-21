@@ -328,6 +328,59 @@ class FuzzyMatcher:
             info["interest"] = bool(matched_row.get("INTEREST_ITEM", False)) if "INTEREST_ITEM" in matched_row.index else False
         
         return info
+    
+    def extract_hazard_from_text(self, full_text: str, hazard_ref_df: pd.DataFrame) -> Optional[str]:
+        """
+        Extract the best matching hazard name from long text.
+        
+        This method is specifically designed for I0490/I2810 service IDs where the
+        hazard information is embedded in a long sentence. It scans the text for
+        known hazard keywords and returns the most specific match found.
+        
+        Strategy:
+        1. Normalize the input text (lowercase, strip whitespace)
+        2. Scan through all hazard reference data
+        3. Find the longest matching keyword (more specific is better)
+        4. Return the standardized hazard name (KOR_NM or ENG_NM)
+        
+        Args:
+            full_text: Long text containing hazard information
+            hazard_ref_df: Reference DataFrame with hazard master data
+            
+        Returns:
+            Standardized hazard name (KOR_NM or ENG_NM) if found, None otherwise
+            
+        Example:
+            >>> matcher = FuzzyMatcher()
+            >>> text = "이물(곤충)이 혼입된 제품으로 확인되어 회수 조치합니다"
+            >>> result = matcher.extract_hazard_from_text(text, hazard_df)
+            >>> print(result)
+            '이물'
+        """
+        if not full_text or hazard_ref_df.empty:
+            return None
+        
+        # Normalize search term
+        search_term = self._normalize_text(full_text)
+        if not search_term:
+            return None
+        
+        # Columns to search in (more options for hazards)
+        match_columns = ['KOR_NM', 'ENG_NM', 'ABRV', 'NCKNM', 'TESTITM_NM']
+        
+        # Use sentence scanning to find the best match
+        matched_row = self._sentence_scan_match(search_term, hazard_ref_df, match_columns)
+        
+        if matched_row is not None:
+            # Prefer Korean name, fall back to English name
+            if "KOR_NM" in matched_row.index and pd.notna(matched_row.get("KOR_NM")):
+                return matched_row.get("KOR_NM")
+            elif "ENG_NM" in matched_row.index and pd.notna(matched_row.get("ENG_NM")):
+                return matched_row.get("ENG_NM")
+            elif "TESTITM_NM" in matched_row.index and pd.notna(matched_row.get("TESTITM_NM")):
+                return matched_row.get("TESTITM_NM")
+        
+        return None
 
 
 # Convenience functions for backward compatibility with existing code
