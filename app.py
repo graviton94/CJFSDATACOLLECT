@@ -269,7 +269,7 @@ def render_master_data_tab():
         edited_df = st.data_editor(
             display_df,
             num_rows="dynamic",
-            use_container_width=True,
+            width='stretch',
             height=500,
             key=f"editor_{selected_name}"
         )
@@ -283,7 +283,7 @@ def render_master_data_tab():
         col1, col2 = st.columns([3, 1])
         
         with col2:
-            if st.button("💾 변경사항 저장", type="primary", use_container_width=True):
+            if st.button("💾 변경사항 저장", type="primary", width='stretch'):
                 try:
                     if search_term:
                         # 필터링된 상태에서는 원본 데이터의 해당 인덱스만 업데이트
@@ -418,14 +418,14 @@ def render_dashboard(df: pd.DataFrame):
                 color_continuous_scale='Reds'
             )
             fig.update_layout(yaxis={'categoryorder': 'total ascending'})
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
             
     with c_col2:
         st.subheader("일별 발생 추이")
         if 'date_parsed' in df_filtered.columns:
             daily_counts = df_filtered.groupby(df_filtered['date_parsed'].dt.date).size().reset_index(name='count')
             fig2 = px.line(daily_counts, x='date_parsed', y='count', markers=True)
-            st.plotly_chart(fig2, use_container_width=True)
+            st.plotly_chart(fig2, width='stretch')
     
     # Second row for Hazard Category Distribution
     st.markdown("---")
@@ -445,7 +445,7 @@ def render_dashboard(df: pd.DataFrame):
                     color_discrete_sequence=px.colors.qualitative.Set3
                 )
                 fig3.update_traces(textposition='inside', textinfo='percent+label')
-                st.plotly_chart(fig3, use_container_width=True)
+                st.plotly_chart(fig3, width='stretch')
             else:
                 st.info("위해요소 카테고리 데이터가 없습니다.")
         else:
@@ -462,7 +462,7 @@ def render_dashboard(df: pd.DataFrame):
                 color=interest_counts.values,
                 color_continuous_scale='Blues'
             )
-            st.plotly_chart(fig4, use_container_width=True)
+            st.plotly_chart(fig4, width='stretch')
         else:
             st.info("interest_item 데이터를 확인할 수 없습니다.")
 
@@ -475,7 +475,7 @@ def render_dashboard(df: pd.DataFrame):
     
     st.dataframe(
         df_display,
-        use_container_width=True,
+        width='stretch',
         hide_index=True
     )
     
@@ -490,11 +490,11 @@ def render_dashboard(df: pd.DataFrame):
             file_name=f"food_safety_data_{datetime.now().strftime('%Y%m%d')}.csv",
             mime="text/csv",
             type="primary",
-            use_container_width=True
+            width='stretch'
         )
     
     with col_download2:
-        if st.button("🔄 전체 데이터 재수집", type="secondary", use_container_width=True):
+        if st.button("🔄 전체 데이터 재수집", type="secondary", width='stretch'):
             with st.spinner("기존 데이터 삭제 및 전체 재수집 중..."):
                 # 기존 데이터 파일 삭제
                 hub_file = Path("data/hub/hub_data.parquet")
