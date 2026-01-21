@@ -280,9 +280,7 @@ class FuzzyMatcher:
             
             # Fallback: Try direct column names if lookup fails
             if info["upper"] is None:
-                if "HRRK_PRDLST_NM" in matched_row.index and pd.notna(matched_row.get("HRRK_PRDLST_NM")):
-                    info["upper"] = matched_row.get("HRRK_PRDLST_NM")
-                elif "HRNK_PRDLST_NM" in matched_row.index and pd.notna(matched_row.get("HRNK_PRDLST_NM")):
+                if "HRNK_PRDLST_NM" in matched_row.index and pd.notna(matched_row.get("HRNK_PRDLST_NM")):
                     info["upper"] = matched_row.get("HRNK_PRDLST_NM")
                 elif "PRDLST_CL_NM" in matched_row.index and pd.notna(matched_row.get("PRDLST_CL_NM")):
                     info["upper"] = matched_row.get("PRDLST_CL_NM")

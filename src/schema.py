@@ -1,7 +1,7 @@
 """
 Unified schema for food safety risk data from multiple sources.
 Normalizes data from EU RASFF, FDA Import Alerts, and Korea MFDS.
-Follows the 13-column standard defined below.
+Follows the 14-column standard defined below.
 """
 
 import pandas as pd
