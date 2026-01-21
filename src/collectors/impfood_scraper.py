@@ -152,7 +152,7 @@ class ImpFoodScraper:
                                 "notifying_country": "South Korea",
                                 "hazard_category": hazard_info["category"],
                                 "hazard_item": hazard_item,
-                                "full_text": None,  # ImpFood does not provide full text context
+                                "full_text": None,  # ImpFood does not provide full text
                                 "analyzable": hazard_info["analyzable"],
                                 "interest_item": hazard_info["interest"]
                             }

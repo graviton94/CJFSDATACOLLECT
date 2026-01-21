@@ -63,7 +63,7 @@ class RASFFCollector:
                             "notifying_country": "EU Member States",
                             "hazard_category": "Uncategorized",
                             "hazard_item": subject, # 상세 내용을 위해 Subject 중복 사용
-                            "full_text": None,  # RASFF does not provide full text context in current implementation
+                            "full_text": None,  # RASFF does not provide full text
                             "analyzable": False,
                             "interest_item": False
                         })

@@ -6,22 +6,22 @@ The central database (`hub_data.parquet`) strictly adheres to the following sche
 
 All data collectors MUST return a `pd.DataFrame` with exactly these **14 columns** defined in `src/schema.py`.
 
-| # | Column Name | Type | Description | Example |
-|:--|:---|:---:|:---|:---|
-| 1 | `registration_date` | `str` | 등록일자 (YYYY-MM-DD) | `2024-05-20` |
-| 2 | `data_source` | `str` | 데이터소스 | `MFDS`, `FDA`, `RASFF`, `ImpFood` |
-| 3 | `source_detail` | `str` | 상세출처 (API ID, Ref No 등) | `I2620-1234`, `Import Alert 99-01` |
-| 4 | `product_type` | `str` | 품목유형 (원본) | `Fishery products`, `냉이` |
-| 5 | `top_level_product_type` | `str` | 최상위품목유형 (Lookup) | `수산물`, `농산물` |
-| 6 | `upper_product_type` | `str` | 상위품목유형 (Lookup) | `냉동수산물`, `채소류` |
-| 7 | `product_name` | `str` | 제품명 | `Frozen Shrimp`, `건조 표고버섯` |
-| 8 | `origin_country` | `str` | 원산지 (Standardized) | `Vietnam`, `South Korea` |
-| 9 | `notifying_country` | `str` | 통보국 (Reporting Country) | `South Korea`, `United States`, `EU Member States` |
-| 10 | `hazard_category` | `str` | 분류(카테고리) (Lookup) | `미생물`, `농약`, `중금속` |
-| 11 | `hazard_item` | `str` | 시험항목 (위해정보 원본) | `Salmonella`, `펜디메탈린` |
-| 12 | `full_text` | `str` | 전문 (원본 본문, Nullable) | `Detected 15ppm of Aflatoxin in sample` |
-| 13 | `analyzable` | `bool` | 분석가능여부 (Lookup) | `True`, `False` |
-| 14 | `interest_item` | `bool` | 관심항목 (Lookup) | `True`, `False` |
+| Column Name | Type | Description | Example |
+|:---|:---:|:---|:---|
+| `registration_date` | `str` | 등록일자 (YYYY-MM-DD) | `2024-05-20` |
+| `data_source` | `str` | 데이터소스 | `MFDS`, `FDA`, `RASFF`, `ImpFood` |
+| `source_detail` | `str` | 상세출처 (API ID, Ref No 등) | `I2620-1234`, `Import Alert 99-01` |
+| `product_type` | `str` | 품목유형 (원본) | `Fishery products`, `냉이` |
+| `top_level_product_type` | `str` | 최상위품목유형 (Lookup) | `수산물`, `농산물` |
+| `upper_product_type` | `str` | 상위품목유형 (Lookup) | `냉동수산물`, `채소류` |
+| `product_name` | `str` | 제품명 | `Frozen Shrimp`, `건조 표고버섯` |
+| `origin_country` | `str` | 원산지 (Standardized) | `Vietnam`, `South Korea` |
+| `notifying_country` | `str` | 통보국 (Reporting Country) | `South Korea`, `United States`, `EU Member States` |
+| `hazard_category` | `str` | 분류(카테고리) (Lookup) | `미생물`, `농약`, `중금속` |
+| `hazard_item` | `str` | 시험항목 (위해정보 원본) | `Salmonella`, `펜디메탈린` |
+| `full_text` | `str` | 전문 (원본 본문, Nullable) | `Detected 15ppm of Aflatoxin in sample` |
+| `analyzable` | `bool` | 분석가능여부 (Lookup) | `True`, `False` |
+| `interest_item` | `bool` | 관심항목 (Lookup) | `True`, `False` |
 
 ## Mapping Rules
 

@@ -98,7 +98,7 @@ class FDACollector:
                             "notifying_country": "United States",
                             "hazard_category": "Uncategorized", # Reason 분석 필요
                             "hazard_item": reason_desc,
-                            "full_text": None,  # FDA does not provide full text context
+                            "full_text": None,  # FDA does not provide full text
                             "analyzable": False,
                             "interest_item": False
                         }
