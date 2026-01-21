@@ -481,7 +481,7 @@ def render_dashboard(df: pd.DataFrame):
     
     # CSV Download Button
     st.markdown("---")
-    col_download1, col_download2 = st.columns([1, 3])
+    col_download1, col_download2 = st.columns([1, 1])
     with col_download1:
         csv_data = df_display.to_csv(index=False).encode('utf-8-sig')
         st.download_button(
@@ -489,8 +489,25 @@ def render_dashboard(df: pd.DataFrame):
             data=csv_data,
             file_name=f"food_safety_data_{datetime.now().strftime('%Y%m%d')}.csv",
             mime="text/csv",
-            type="primary"
+            type="primary",
+            use_container_width=True
         )
+    
+    with col_download2:
+        if st.button("🔄 전체 데이터 재수집", type="secondary", use_container_width=True):
+            with st.spinner("기존 데이터 삭제 및 전체 재수집 중..."):
+                # 기존 데이터 파일 삭제
+                hub_file = Path("data/hub/hub_data.parquet")
+                if hub_file.exists():
+                    hub_file.unlink()
+                    st.info("✅ 기존 데이터 삭제 완료")
+                
+                # 스케줄러 실행 (once 모드)
+                scheduler = get_scheduler_instance()
+                total_count = scheduler.run_all_collectors()
+                st.success(f"✅ 전체 수집 완료: {total_count}건의 새로운 데이터")
+                st.cache_data.clear()
+                st.rerun()
 
 
 def main():
