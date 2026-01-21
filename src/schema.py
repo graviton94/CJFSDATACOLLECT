@@ -66,7 +66,7 @@ def get_empty_dataframe() -> pd.DataFrame:
 
 def validate_schema(df: pd.DataFrame) -> pd.DataFrame:
     """
-    DataFrame이 13개 컬럼 규칙을 준수하도록 강제 변환합니다.
+    DataFrame이 14개 컬럼 규칙을 준수하도록 강제 변환합니다.
     """
     # 명시적 복사로 SettingWithCopyWarning 방지
     df = df.copy()

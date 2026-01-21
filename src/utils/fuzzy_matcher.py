@@ -201,14 +201,20 @@ class FuzzyMatcher:
         2. Keyword match (partial string)
         3. Fuzzy match (similarity score)
         
+        Hierarchy Lookup Logic:
+        - Find the product row by matching KOR_NM or ENG_NM
+        - Get HTRK_PRDLST_CD (top-level code) from the matched row
+        - Look up the row where PRDLST_CD == HTRK_PRDLST_CD to get the top-level name
+        - Similarly for HRNK_PRDLST_CD (upper code) -> lookup PRDLST_CD to get upper name
+        
         Args:
             raw_text: Raw product type from data source
             product_ref_df: Reference DataFrame with product hierarchy
             
         Returns:
             Dictionary with keys:
-            - 'top': Top-level product type (HTRK_PRDLST_NM or GR_NM)
-            - 'upper': Upper product type (HRRK_PRDLST_NM or PRDLST_CL_NM)
+            - 'top': Top-level product type name (from HTRK_PRDLST_CD lookup)
+            - 'upper': Upper product type name (from HRNK_PRDLST_CD lookup)
             
         Example:
             >>> matcher = FuzzyMatcher()
@@ -237,18 +243,49 @@ class FuzzyMatcher:
             matched_row = self._fuzzy_match(search_term, product_ref_df, match_columns)
         
         if matched_row is not None:
-            # Extract output fields: NAMES instead of CODES
-            # Try HTRK_PRDLST_NM first, fallback to GR_NM
-            if "HTRK_PRDLST_NM" in matched_row.index and pd.notna(matched_row.get("HTRK_PRDLST_NM")):
-                info["top"] = matched_row.get("HTRK_PRDLST_NM")
-            elif "GR_NM" in matched_row.index and pd.notna(matched_row.get("GR_NM")):
-                info["top"] = matched_row.get("GR_NM")
+            # NEW LOGIC: Lookup hierarchy codes to get names
             
-            # Try HRRK_PRDLST_NM first, fallback to PRDLST_CL_NM
-            if "HRRK_PRDLST_NM" in matched_row.index and pd.notna(matched_row.get("HRRK_PRDLST_NM")):
-                info["upper"] = matched_row.get("HRRK_PRDLST_NM")
-            elif "PRDLST_CL_NM" in matched_row.index and pd.notna(matched_row.get("PRDLST_CL_NM")):
-                info["upper"] = matched_row.get("PRDLST_CL_NM")
+            # 1. Top-level product type: Get HTRK_PRDLST_CD and lookup its name
+            if "HTRK_PRDLST_CD" in matched_row.index and pd.notna(matched_row.get("HTRK_PRDLST_CD")):
+                top_code = matched_row.get("HTRK_PRDLST_CD")
+                # Find row where PRDLST_CD == top_code
+                top_row_mask = product_ref_df["PRDLST_CD"] == top_code
+                if top_row_mask.any():
+                    top_row = product_ref_df[top_row_mask].iloc[0]
+                    # Prefer KOR_NM, fallback to ENG_NM
+                    if pd.notna(top_row.get("KOR_NM")):
+                        info["top"] = top_row.get("KOR_NM")
+                    elif pd.notna(top_row.get("ENG_NM")):
+                        info["top"] = top_row.get("ENG_NM")
+            
+            # Fallback: Try direct column names if lookup fails
+            if info["top"] is None:
+                if "HTRK_PRDLST_NM" in matched_row.index and pd.notna(matched_row.get("HTRK_PRDLST_NM")):
+                    info["top"] = matched_row.get("HTRK_PRDLST_NM")
+                elif "GR_NM" in matched_row.index and pd.notna(matched_row.get("GR_NM")):
+                    info["top"] = matched_row.get("GR_NM")
+            
+            # 2. Upper product type: Get HRNK_PRDLST_CD and lookup its name
+            if "HRNK_PRDLST_CD" in matched_row.index and pd.notna(matched_row.get("HRNK_PRDLST_CD")):
+                upper_code = matched_row.get("HRNK_PRDLST_CD")
+                # Find row where PRDLST_CD == upper_code
+                upper_row_mask = product_ref_df["PRDLST_CD"] == upper_code
+                if upper_row_mask.any():
+                    upper_row = product_ref_df[upper_row_mask].iloc[0]
+                    # Prefer KOR_NM, fallback to ENG_NM
+                    if pd.notna(upper_row.get("KOR_NM")):
+                        info["upper"] = upper_row.get("KOR_NM")
+                    elif pd.notna(upper_row.get("ENG_NM")):
+                        info["upper"] = upper_row.get("ENG_NM")
+            
+            # Fallback: Try direct column names if lookup fails
+            if info["upper"] is None:
+                if "HRRK_PRDLST_NM" in matched_row.index and pd.notna(matched_row.get("HRRK_PRDLST_NM")):
+                    info["upper"] = matched_row.get("HRRK_PRDLST_NM")
+                elif "HRNK_PRDLST_NM" in matched_row.index and pd.notna(matched_row.get("HRNK_PRDLST_NM")):
+                    info["upper"] = matched_row.get("HRNK_PRDLST_NM")
+                elif "PRDLST_CL_NM" in matched_row.index and pd.notna(matched_row.get("PRDLST_CL_NM")):
+                    info["upper"] = matched_row.get("PRDLST_CL_NM")
         
         return info
     

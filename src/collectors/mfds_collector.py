@@ -94,9 +94,15 @@ class MFDSCollector:
           1. Exact match (fastest)
           2. Keyword/partial match (handles "Frozen Shrimp" vs "Shrimp")
           3. Fuzzy similarity match (handles typos and variations)
+        - Hierarchy Lookup:
+          1. Find matched row by KOR_NM or ENG_NM
+          2. Get HTRK_PRDLST_CD (top-level code) from matched row
+          3. Lookup PRDLST_CD == HTRK_PRDLST_CD to get top-level name
+          4. Get HRNK_PRDLST_CD (upper code) from matched row
+          5. Lookup PRDLST_CD == HRNK_PRDLST_CD to get upper name
         - Output Mapping:
-          - top_level_product_type ← HTRK_PRDLST_NM or GR_NM (from reference)
-          - upper_product_type ← HRRK_PRDLST_NM or PRDLST_CL_NM (from reference)
+          - top_level_product_type ← Name of row where PRDLST_CD == HTRK_PRDLST_CD
+          - upper_product_type ← Name of row where PRDLST_CD == HRNK_PRDLST_CD
         """
         return self.fuzzy_matcher.match_product_type(product_type, self.product_ref_df)
 
