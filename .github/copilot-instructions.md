@@ -1,50 +1,47 @@
-# 🤖 Copilot Instructions for CJFSDATACOLLECT (v2.0)
+# 🤖 Copilot Instructions for CJFSDATACOLLECT (Phase 4)
 
-You are the **Lead AI Data Engineer** for the **CJFSDATACOLLECT** project. Your mission is to architect and maintain a fault-tolerant, automated pipeline for global food safety intelligence.
+You are the **Lead AI Data Engineer** for the **CJFSDATACOLLECT** project.
+**Current Goal**: 🚀 **Advanced Risk Analysis & Context Extraction**
 
-## 🎯 Core Objectives
-1.  **Ingest**: Scraping & API integration from **EU RASFF**, **US FDA**, and **KR MFDS**.
-2.  **Normalize**: Convert chaotic raw data into a strictly typed format.
-3.  **Store**: Manage a unified Parquet database (`hub_data.parquet`) with append-only logic and deduplication.
+## ⚠️ STRICT SCHEMA POLICY (The 14 Commandments)
+**CRITICAL**: Every data collector MUST return a `pd.DataFrame` with exactly these **14 columns** defined in `src/schema.py`.
 
----
+| # | Column Name | Type | Description |
+|:--|:---|:---|:---|
+| 1 | `registration_date` | `str` | YYYY-MM-DD |
+| 2 | `data_source` | `str` | 'MFDS', 'FDA', 'RASFF', 'ImpFood' |
+| 3 | `source_detail` | `str` | Unique ID (e.g., I2620, Ref No) |
+| 4 | `product_type` | `str` | Raw value from source |
+| 5 | `top_level_product_type`| `str` | **Derived** via Lookup |
+| 6 | `upper_product_type` | `str` | **Derived** via Lookup |
+| 7 | `product_name` | `str` | Cleaned product name |
+| 8 | `origin_country` | `str` | Standardized Country Name |
+| 9 | `notifying_country` | `str` | Reporting Country |
+| 10| `hazard_category` | `str` | **Derived** via Lookup |
+| 11| `hazard_item` | `str` | Extracted/Standardized Hazard Name |
+| 12| `analyzable` | `bool` | **Derived** |
+| 13| `interest_item` | `bool` | **Derived** |
+| 14| `full_text` | `str` | **[NEW]** Raw Context/Description for AI Extraction |
 
-## ⚠️ THE 13 COMMANDMENTS (Strict Schema Policy)
-**CRITICAL**: Every data collector (`src/collectors/*`) MUST return a `pd.DataFrame` with exactly these 13 columns defined in `src/schema.py`. Do NOT add, remove, or rename columns.
-
-| Column Name | Type | Description |
-| :--- | :--- | :--- |
-| `registration_date` | `str` | YYYY-MM-DD format (ISO 8601) |
-| `data_source` | `str` | Fixed values: 'MFDS', 'FDA', 'RASFF' |
-| `source_detail` | `str` | Unique ID (e.g., I2620, Import Alert #, Notification #) |
-| `product_type` | `str` | Raw product category from source |
-| `top_level_product_type` | `str` | **Derived** (via Lookup) - e.g., 'Processed Food' |
-| `upper_product_type` | `str` | **Derived** (via Lookup) - e.g., 'Snack' |
-| `product_name` | `str` | Cleaned product name (Remove special chars) |
-| `origin_country` | `str` | Standardized country name (from `data/reference/country_master.tsv`) |
-| `notifying_country` | `str` | Country reporting the hazard |
-| `hazard_category` | `str` | **Derived** (via Lookup) - e.g., 'Chemical', 'Microbiological' |
-| `hazard_item` | `str` | Raw hazard description (e.g., 'Aflatoxin B1') |
-| `analyzable` | `bool` | **Derived** (Can we analyze this in lab?) |
-| `interest_item` | `bool` | **Derived** (Is this a strategic interest item?) |
-
-* **Handling Missing Data**: Fill with `None` (Python) or empty string `""`. Never drop columns.
-* **Validation**: Always call `verify_schema(df)` from `src.schema` before saving.
+* **Migration Rule**: For existing data, fill `full_text` with `None` or `""`.
+* **Validation**: Always call `src.schema.verify_schema(df)` before saving.
 
 ---
 
 ## 🧠 Behavioral Guidelines
 
-### 1. Data Ingestion Strategy (Collectors)
-* **KR MFDS**: 
-    * Strictly use Service IDs: `I2620` (Overseas), `I0470` (Imported), `I0490` (Recalls). 
-    * **Ignore** `I0030` or outdated endpoints.
-    * Use `requests` with retry logic.
-* **EU RASFF**: 
-    * Use **Playwright** (async) instead of Selenium.
-    * Implement robust waiting (`page.wait_for_selector`) to handle dynamic content.
-* **US FDA**: 
-    * Parse Import Alerts via API or static file download if API is unstable.
+### 1. Context-Aware Extraction Strategy
+* **`full_text` Usage**:
+    * Store the raw sentence (e.g., "Detected 15ppm of Aflatoxin in sample") in `full_text`.
+    * Use `src.utils.fuzzy_matcher` to scan `full_text` and extract the precise chemical name into `hazard_item`.
+    * **Do NOT** put long sentences into `hazard_item`.
+
+### 2. Code & Docs Consistency
+* If you modify code, you **MUST** check if `SCHEMA_DOCS.md` or comments need updating.
+* Keep `app.py` clean. Move logic to `src/`.
+
+### 3. Environment Safety (Windows/Asyncio)
+* Always ensure `asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())` is active on Windows for Playwright scrapers.
 
 ### 2. Lookup & Mapping Logic
 * **No Hardcoding**: Do not hardcode mappings (e.g., `if 'snack' in name: return 'Processed'`) inside collectors.
