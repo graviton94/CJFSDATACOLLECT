@@ -87,9 +87,9 @@ def test_lookup_product_info_with_mock_data():
         
         try:
             # Create collector instance (will load our mock data)
-            # Note: This will fail if KOREA_FOOD_API_KEY is not set, so we need to handle that
-            original_key = os.getenv("KOREA_FOOD_API_KEY")
-            os.environ["KOREA_FOOD_API_KEY"] = "test-key-for-unit-test"
+            # Note: This will fail if MFDS_API_KEY is not set, so we need to handle that
+            original_key = os.getenv("MFDS_API_KEY")
+            os.environ["MFDS_API_KEY"] = "test-key-for-unit-test"
             
             collector = MFDSCollector()
             
@@ -139,9 +139,9 @@ def test_lookup_product_info_with_mock_data():
             
             # Restore original environment
             if original_key:
-                os.environ["KOREA_FOOD_API_KEY"] = original_key
+                os.environ["MFDS_API_KEY"] = original_key
             else:
-                os.environ.pop("KOREA_FOOD_API_KEY", None)
+                os.environ.pop("MFDS_API_KEY", None)
                 
         finally:
             # Restore original REF_DIR

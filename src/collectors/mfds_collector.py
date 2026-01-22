@@ -24,9 +24,9 @@ class MFDSCollector:
     REF_DIR = Path("data/reference")
     
     def __init__(self):
-        self.api_key = os.getenv("KOREA_FOOD_API_KEY")
+        self.api_key = os.getenv("MFDS_API_KEY")
         if not self.api_key:
-            raise ValueError("❌ Error: KOREA_FOOD_API_KEY가 .env 파일에 없습니다.")
+            raise ValueError("❌ Error: MFDS_API_KEY가 .env 파일에 없습니다.")
             
         # ---------------------------------------------------------
         # [Smart Lookup] 기준정보 로드 (메모리 캐싱)

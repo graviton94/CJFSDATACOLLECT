@@ -80,7 +80,7 @@ playwright install
 ### 2. Environment Variables
 Create .env file:
 ```Ini, TOML
-KOREA_FOOD_API_KEY=your_api_key_here
+MFDS_API_KEY=your_api_key_here
 ```
 ### 3. Run Scheduler (Data Collection)
 ```Bash
