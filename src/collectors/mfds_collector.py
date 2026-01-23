@@ -159,7 +159,8 @@ class MFDSCollector:
                     hazard_info = self._lookup_hazard_info(hazard_item)
                     
                     # 3. 상세 출처 생성
-                    source_detail = f"{service_id}-{unique_seq}" if unique_seq else f"{service_id}-UNKNOWN"
+                    source_prefix = "국내식품 부적합"
+                    source_detail = f"{source_prefix}-{unique_seq}" if unique_seq else f"{source_prefix}-UNKNOWN"
                     
                     # 4. 통합 스키마 매핑 (14 Columns Strict)
                     # I2620: Keep existing logic, full_text is None
@@ -193,7 +194,11 @@ class MFDSCollector:
         if not all_records:
             return get_empty_dataframe()
             
-        return pd.DataFrame(all_records)
+        df = pd.DataFrame(all_records)
+        # [Safety] Remove duplicates within the current collection session
+        if 'source_detail' in df.columns:
+            df = df.drop_duplicates(subset=['source_detail'])
+        return df
 
     def collect_i0490(self):
         """
@@ -228,19 +233,35 @@ class MFDSCollector:
                     # 2. 날짜 정규화: YYYY-MM-DD HH:MM:SS -> YYYY-MM-DD (첫 10글자만)
                     reg_date = raw_date[:10] if raw_date else None
                     
-                    # 3. NEW LOGIC: Extract hazard_item from full_text using fuzzy matching
+                    # 3. NEW LOGIC: Keyword-based extraction first, then fuzzy matching
                     full_text = recall_reason  # Store the original text
-                    extracted_hazard = self.fuzzy_matcher.extract_hazard_from_text(full_text, self.hazard_ref_df)
+                    hazard_item = None
                     
-                    # Use extracted hazard if found, otherwise use original text
-                    hazard_item = extracted_hazard if extracted_hazard else recall_reason
+                    # Rule-based filtering (Custom keywords)
+                    if full_text:
+                        if any(k in full_text for k in ["알레르기", "알러지"]):
+                            hazard_item = "표시위반(알러젠)"
+                        elif "잔류농약" in full_text:
+                            hazard_item = "잔류농약"
+                        elif any(k in full_text for k in ["수입신고", "무신고"]):
+                            hazard_item = "수입신고 위반"
+                        elif any(k in full_text for k in ["영업등록", "무등록"]):
+                            hazard_item = "미등록 영업"
+                        elif any(k in full_text for k in ["소비기한", "제조일자", "무표시", "미표시"]):
+                            hazard_item = "표시위반"
+
+                    # Fallback to fuzzy matching if no keyword matched
+                    if not hazard_item:
+                        extracted_hazard = self.fuzzy_matcher.extract_hazard_from_text(full_text, self.hazard_ref_df)
+                        hazard_item = extracted_hazard if extracted_hazard else recall_reason
                     
                     # 4. 데이터 정제 & Lookup
                     prod_info = self._lookup_product_info(product_type)
                     hazard_info = self._lookup_hazard_info(hazard_item)
                     
                     # 5. 상세 출처 생성
-                    source_detail = f"{service_id}-{unique_seq}" if unique_seq else f"{service_id}-UNKNOWN"
+                    source_prefix = "회수판매중지"
+                    source_detail = f"{source_prefix}-{unique_seq}" if unique_seq else f"{source_prefix}-UNKNOWN"
                     
                     # 6. 통합 스키마 매핑 (14 Columns Strict)
                     record = {
@@ -270,7 +291,11 @@ class MFDSCollector:
         if not all_records:
             return get_empty_dataframe()
             
-        return pd.DataFrame(all_records)
+        df = pd.DataFrame(all_records)
+        # [Safety] Remove duplicates within the current collection session
+        if 'source_detail' in df.columns:
+            df = df.drop_duplicates(subset=['source_detail'])
+        return df
 
     def _load_country_reference(self):
         """국가명 마스터 TSV -> 딕셔너리 변환"""
@@ -389,7 +414,8 @@ class MFDSCollector:
                     hazard_info = self._lookup_hazard_info(hazard_item)
                     
                     # 6. 상세 출처 생성
-                    source_detail = f"{service_id}-{notify_no}" if notify_no else f"{service_id}-UNKNOWN"
+                    source_prefix = "해외 위해식품 회수"
+                    source_detail = f"{source_prefix}-{notify_no}" if notify_no else f"{source_prefix}-UNKNOWN"
                     
                     # 7. 통합 스키마 매핑 (14 Columns Strict)
                     record = {
@@ -426,10 +452,11 @@ class MFDSCollector:
         # 1. 각 서비스별 수집
         df_i2620 = self.collect_i2620()
         df_i0490 = self.collect_i0490()
-        df_i2810 = self.collect_i2810()
+        # df_i2810 = self.collect_i2810() # Disabled by user request
         
         # 2. 결과 병합
-        dfs_to_combine = [df for df in [df_i2620, df_i0490, df_i2810] if not df.empty]
+        # dfs_to_combine = [df for df in [df_i2620, df_i0490, df_i2810] if not df.empty]
+        dfs_to_combine = [df for df in [df_i2620, df_i0490] if not df.empty]
         
         if not dfs_to_combine:
             return get_empty_dataframe()
@@ -438,7 +465,7 @@ class MFDSCollector:
         
         # 3. 최종 스키마 검증 및 반환
         final_df = validate_schema(combined_df)
-        print(f"✅ [Total] 총 {len(final_df)} 건 수집 및 정규화 완료 (I2620 + I0490 + I2810).")
+        print(f"✅ [Total] 총 {len(final_df)} 건 수집 및 정규화 완료 (I2620 + I0490).")
         return final_df
 
 if __name__ == "__main__":

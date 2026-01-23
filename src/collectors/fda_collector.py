@@ -45,7 +45,13 @@ class FDACollector:
 
     def load_previous_counts(self):
         if os.path.exists(self.STATE_FILE):
-            with open(self.STATE_FILE, 'r') as f: return json.load(f)
+             try:
+                with open(self.STATE_FILE, 'r') as f:
+                    return json.load(f)
+             except json.JSONDecodeError:
+                return {}
+             except Exception:
+                return {}
         return {}
 
     def save_current_counts(self, data):

@@ -3,11 +3,16 @@ Streamlit dashboard for food safety risk analysis.
 Provides unified visualization of data from all sources and master data management.
 """
 
-# Fix Windows Asyncio Event Loop Policy for Playwright compatibility
 import sys
 import asyncio
+import warnings
+
+# Fix Windows Asyncio Event Loop Policy for Playwright compatibility
 if sys.platform == 'win32':
-    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+    # Suppress DeprecationWarning for WindowsProactorEventLoopPolicy (Python 3.14+)
+    with warnings.catch_warnings():
+        warnings.filterwarnings("ignore", category=DeprecationWarning)
+        asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 import streamlit as st
 import pandas as pd
@@ -193,6 +198,14 @@ def load_data():
         return pd.DataFrame()
     try:
         df = pd.read_parquet(hub_path, engine='pyarrow')
+        
+        # [Patch] Map legacy MFDS codes to Korean names for display
+        if 'source_detail' in df.columns:
+            df['source_detail'] = df['source_detail'].astype(str)
+            df['source_detail'] = df['source_detail'].str.replace('I2620', '국내식품 부적합', regex=False)
+            df['source_detail'] = df['source_detail'].str.replace('I0490', '회수판매중지', regex=False)
+            df['source_detail'] = df['source_detail'].str.replace('I2810', '해외 위해식품 회수', regex=False)
+            
         return df
     except Exception as e:
         st.error(f"Error loading data: {e}")
@@ -476,6 +489,14 @@ def render_dashboard(df: pd.DataFrame):
     
     # Prepare display dataframe with Korean headers
     df_display = df_filtered.drop(columns=['date_parsed'], errors='ignore').copy()
+    
+    # [UI] Clean up source_detail for display (remove unique ID suffix)
+    if 'source_detail' in df_display.columns:
+        # Regex: Remove hyphen and following characters if they start with a digit or 'UNKNOWN'
+        # This handles '국내식품 부적합-12345' -> '국내식품 부적합'
+        # But preserves pure names if any
+        df_display['source_detail'] = df_display['source_detail'].astype(str).str.replace(r'-(\d+|UNKNOWN).*', '', regex=True)
+
     df_display = df_display.rename(columns=DISPLAY_HEADERS)
     
     st.dataframe(
