@@ -27,12 +27,23 @@ ENV/
 .venv
 
 # Data files
-data/*.parquet
-data/*.csv
+# Data directories to ignore
+data/hub/
 data/raw/
 data/processed/
+
+# Ignore large data files globally
 *.parquet
 *.csv
+
+# Exceptions: Allow reference and state data to be tracked
+!data/reference/
+!data/reference/*.parquet
+!data/reference/*.csv
+!data/state/
+!data/state/*.parquet
+!data/state/*.csv
+!data/state/*.json
 
 # Playwright
 .playwright/
