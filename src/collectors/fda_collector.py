@@ -25,9 +25,18 @@ import requests
 import pandas as pd
 from bs4 import BeautifulSoup, NavigableString, Tag
 
-from src.schema import UNIFIED_SCHEMA, validate_schema, get_empty_dataframe
-from src.utils.reference_loader import ReferenceLoader
-from src.utils.fuzzy_matcher import FuzzyMatcher
+try:
+    from src.schema import UNIFIED_SCHEMA, validate_schema, get_empty_dataframe
+    from src.utils.reference_loader import ReferenceLoader
+    from src.utils.fuzzy_matcher import FuzzyMatcher
+except ImportError:
+    # Fallback to relative imports
+    import sys
+    from pathlib import Path
+    sys.path.insert(0, str(Path(__file__).parent.parent))
+    from schema import UNIFIED_SCHEMA, validate_schema, get_empty_dataframe
+    from utils.reference_loader import ReferenceLoader
+    from utils.fuzzy_matcher import FuzzyMatcher
 
 
 class FDACollector:
