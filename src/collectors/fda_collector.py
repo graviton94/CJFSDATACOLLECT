@@ -18,7 +18,7 @@ Key Features:
 import os
 import re
 from pathlib import Path
-from typing import List, Dict, Optional, Tuple
+from typing import List, Dict, Optional, Tuple, Union
 from datetime import datetime
 
 import requests
@@ -69,7 +69,7 @@ class FDACollector:
     # Regex pattern for MM/DD/YYYY date format (no word boundaries for flexibility)
     DATE_PATTERN = re.compile(r'(\d{2}/\d{2}/\d{4})')
     
-    def __init__(self, alert_limit: Optional[int] = "default"):
+    def __init__(self, alert_limit: Union[int, str, None] = "default"):
         """
         Initialize the collector with necessary directories.
         
@@ -481,8 +481,8 @@ The collector implements the following workflow:
 
 ## Notes
 
-- Current run processed the first 5 alerts for testing purposes
-- To process all alerts, remove the limit in the `collect()` method
+- Default alert processing limit is {collector.DEFAULT_ALERT_LIMIT} for testing
+- To process all alerts in production, use: `FDACollector(alert_limit=None)`
 - Full text context is preserved in the `full_text` column for future AI-based extraction
 """
         

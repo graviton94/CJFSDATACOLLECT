@@ -107,11 +107,15 @@ def test_normalize_country_name():
 
 def test_schema_validation():
     """Test that collector produces valid schema output."""
+    # Use a constant for the test date
+    TEST_DATE = "2024-01-15"
+    TEST_ALERT_NUM = "99-19"
+    
     # Create a mock record
     mock_records = [{
-        "registration_date": "2024-01-15",
+        "registration_date": TEST_DATE,
         "data_source": "FDA",
-        "source_detail": "Import Alert 99-19",
+        "source_detail": f"Import Alert {TEST_ALERT_NUM}",
         "product_type": "Imported Food",
         "top_level_product_type": None,
         "upper_product_type": None,
@@ -119,7 +123,7 @@ def test_schema_validation():
         "origin_country": "China",
         "notifying_country": "United States",
         "hazard_category": None,
-        "hazard_item": "99-19",
+        "hazard_item": TEST_ALERT_NUM,
         "full_text": "Test context",
         "analyzable": False,
         "interest_item": False
@@ -137,7 +141,7 @@ def test_schema_validation():
     assert validated_df['interest_item'].dtype == bool, "interest_item should be boolean"
     
     # Check date format
-    assert validated_df['registration_date'].iloc[0] == "2024-01-15", \
+    assert validated_df['registration_date'].iloc[0] == TEST_DATE, \
         "Date should be in YYYY-MM-DD format"
     
     print("✓ Schema validation test passed")
