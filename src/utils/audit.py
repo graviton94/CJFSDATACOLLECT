@@ -2,8 +2,8 @@
 Data Quality Audit Script for hub_data.parquet
 
 This script performs comprehensive health checks on the unified food safety database:
-1. Schema validation against UNIFIED_SCHEMA
-2. Missing value analysis for all 13 columns
+1. Schema validation against UNIFIED_SCHEMA (14 columns)
+2. Missing value analysis for all 14 columns
 3. Mapping failure detection (raw data exists but derived data missing)
 4. Formatted reporting using tabulate
 

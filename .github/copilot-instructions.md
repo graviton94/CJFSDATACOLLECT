@@ -24,7 +24,7 @@ You are the **Lead AI Data Engineer** for the **CJFSDATACOLLECT** project.
 | 14| `full_text` | `str` | **[NEW]** Raw Context/Description for AI Extraction |
 
 * **Migration Rule**: For existing data, fill `full_text` with `None` or `""`.
-* **Validation**: Always call `src.schema.verify_schema(df)` before saving.
+* **Validation**: Always call `src.schema.validate_schema(df)` before saving.
 
 ---
 
