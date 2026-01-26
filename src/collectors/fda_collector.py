@@ -62,13 +62,31 @@ class FDACollector:
     OUTPUT_DIR = Path("data/hub")
     REPORT_DIR = Path("reports")
     
-    # Regex pattern for MM/DD/YYYY date format
-    DATE_PATTERN = re.compile(r'\b(\d{2}/\d{2}/\d{4})\b')
+    # Default values
+    DEFAULT_COUNTRY = "Unknown"
+    DEFAULT_ALERT_LIMIT = 5  # Limit for testing; set to None for production
     
-    def __init__(self):
-        """Initialize the collector with necessary directories."""
+    # Regex pattern for MM/DD/YYYY date format (no word boundaries for flexibility)
+    DATE_PATTERN = re.compile(r'(\d{2}/\d{2}/\d{4})')
+    
+    def __init__(self, alert_limit: Optional[int] = "default"):
+        """
+        Initialize the collector with necessary directories.
+        
+        Args:
+            alert_limit: Maximum number of alerts to process.
+                        - "default" (default): Uses DEFAULT_ALERT_LIMIT for testing
+                        - None: Processes all alerts (production mode)
+                        - int > 0: Custom limit
+        """
         self.OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
         self.REPORT_DIR.mkdir(parents=True, exist_ok=True)
+        
+        # Set alert processing limit
+        if alert_limit == "default":
+            self.alert_limit = self.DEFAULT_ALERT_LIMIT
+        else:
+            self.alert_limit = alert_limit
         
         # Initialize utilities
         self.fuzzy_matcher = FuzzyMatcher()
@@ -285,7 +303,7 @@ class FDACollector:
                 # Extract country from nearest header
                 country_name = self._find_nearest_country_header(date_element)
                 if not country_name:
-                    country_name = "Unknown"
+                    country_name = self.DEFAULT_COUNTRY
                 
                 # Normalize country name using reference data
                 origin_country = self._normalize_country_name(country_name)
@@ -387,9 +405,13 @@ class FDACollector:
         # Step 2: Parse detail pages
         all_records = []
         
-        # Limit to first 5 alerts for testing/demo purposes
-        # Remove this limit for production
-        alerts_to_process = alerts[:5] if len(alerts) > 5 else alerts
+        # Apply alert limit (configurable via constructor)
+        if self.alert_limit and self.alert_limit > 0:
+            alerts_to_process = alerts[:self.alert_limit]
+            print(f"   Processing first {len(alerts_to_process)} alerts (limit: {self.alert_limit})")
+        else:
+            alerts_to_process = alerts
+            print(f"   Processing all {len(alerts_to_process)} alerts")
         
         for alert_info in alerts_to_process:
             records = self.parse_detail_page(alert_info)
@@ -471,7 +493,9 @@ The collector implements the following workflow:
 
 
 if __name__ == "__main__":
-    collector = FDACollector()
+    # Use alert_limit=None for production (processes all alerts)
+    # Use alert_limit=5 for testing (processes first 5 alerts)
+    collector = FDACollector(alert_limit=5)  # Testing mode
     df = collector.collect()
     print(f"\n📊 Collection complete: {len(df)} records")
     print(df.head())

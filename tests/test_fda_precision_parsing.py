@@ -21,6 +21,7 @@ from schema import validate_schema, UNIFIED_SCHEMA
 
 def test_fda_collector_initialization():
     """Test that FDA collector initializes correctly."""
+    # Test with default limit
     collector = FDACollector()
     
     # Check directories are created
@@ -29,6 +30,17 @@ def test_fda_collector_initialization():
     
     # Check fuzzy matcher is initialized
     assert collector.fuzzy_matcher is not None, "Fuzzy matcher should be initialized"
+    
+    # Check default alert limit
+    assert collector.alert_limit == FDACollector.DEFAULT_ALERT_LIMIT, "Should use default alert limit"
+    
+    # Test with custom limit
+    collector_custom = FDACollector(alert_limit=10)
+    assert collector_custom.alert_limit == 10, "Should use custom alert limit"
+    
+    # Test with no limit (production mode)
+    collector_prod = FDACollector(alert_limit=None)
+    assert collector_prod.alert_limit is None, "Should have no limit in production mode"
     
     print("✓ FDA collector initialization test passed")
 
