@@ -57,8 +57,16 @@ class ImpFoodScraper:
         """
         시험항목 이름으로 분류(카테고리) 조회
         - Enhanced with FuzzyMatcher for better matching accuracy
+        
+        NEW RULE: If extracted item does not map to a category, use the item itself as category.
         """
-        return self.fuzzy_matcher.match_hazard_category(hazard_item, self.hazard_ref_df)
+        info = self.fuzzy_matcher.match_hazard_category(hazard_item, self.hazard_ref_df)
+        
+        # Rule: If category is missing but we have a hazard_item, use hazard_item as category
+        if info["category"] is None and hazard_item:
+            info["category"] = hazard_item
+            
+        return info
 
     def scrape(self, max_pages=3):
         """

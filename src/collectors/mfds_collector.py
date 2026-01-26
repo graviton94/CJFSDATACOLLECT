@@ -121,8 +121,17 @@ class MFDSCollector:
           - hazard_category ← M_KOR_NM (from reference)
           - analyzable ← ANALYZABLE (from reference)
           - interest_item ← INTEREST_ITEM (from reference)
+          
+        NEW RULE: If extracted item does not map to a category, use the item itself as category.
         """
-        return self.fuzzy_matcher.match_hazard_category(hazard_item, self.hazard_ref_df)
+        info = self.fuzzy_matcher.match_hazard_category(hazard_item, self.hazard_ref_df)
+        
+        # Rule: If category is missing but we have a hazard_item, use hazard_item as category
+        if info["category"] is None and hazard_item:
+            # Clean up the hazard item slightly if needed (optional)
+            info["category"] = hazard_item
+            
+        return info
 
     def collect_i2620(self):
         """
