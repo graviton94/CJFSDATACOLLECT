@@ -91,7 +91,7 @@ class FDACollector:
                         except:
                             reg_date = datetime.now().strftime("%Y-%m-%d")
 
-                        # 13개 컬럼 매핑
+                        # 14개 컬럼 매핑
                         record = {
                             "registration_date": reg_date,
                             "data_source": "FDA",
@@ -104,6 +104,7 @@ class FDACollector:
                             "notifying_country": "United States",
                             "hazard_category": "Uncategorized", # Reason 분석 필요
                             "hazard_item": reason_desc,
+                            "full_text": None,  # FDA does not provide full text
                             "analyzable": False,
                             "interest_item": False
                         }

@@ -147,7 +147,7 @@ class ImpFoodScraper:
                             prod_info = self._lookup_product_info(product_type)
                             hazard_info = self._lookup_hazard_info(hazard_item)
 
-                            # 6. 스키마 매핑 (13 Columns)
+                            # 6. 스키마 매핑 (14 Columns)
                             record = {
                                 "registration_date": date_str, # 포맷이 이미 YYYY-MM-DD 형태임
                                 "data_source": "ImpFood",
@@ -160,6 +160,7 @@ class ImpFoodScraper:
                                 "notifying_country": "South Korea",
                                 "hazard_category": hazard_info["category"],
                                 "hazard_item": hazard_item,
+                                "full_text": None,  # ImpFood does not provide full text
                                 "analyzable": hazard_info["analyzable"],
                                 "interest_item": hazard_info["interest"]
                             }
