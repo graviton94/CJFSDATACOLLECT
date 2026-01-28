@@ -17,8 +17,7 @@ from src.collectors.rasff_scraper import RASFFCollector
 from src.collectors.impfood_scraper import ImpFoodScraper
 
 # Import Utils
-from src.utils.deduplication import merge_and_deduplicate
-from src.utils.storage import save_to_parquet
+from src.utils.storage import save_to_hub
 
 class DataIngestionScheduler:
     """
@@ -39,9 +38,40 @@ class DataIngestionScheduler:
             "ImpFood": ImpFoodScraper()
         }
 
+    def _run_fda_indexer(self):
+        """FDA List Indexer 실행 (FDA 수집 전 사전 실행)"""
+        logger.info("🛠️ Running FDA List Indexer (Pre-collection Step)...")
+        import subprocess
+        import sys
+        
+        indexer_script = Path("tools/fda_list_indexer.py")
+        if not indexer_script.exists():
+            logger.error(f"❌ Indexer script not found: {indexer_script}")
+            return False
+            
+        try:
+            # Run the script as a separate process
+            result = subprocess.run(
+                [sys.executable, str(indexer_script)],
+                capture_output=True,
+                text=True, # text=True means stdout is string
+                check=True
+            )
+            logger.info("✅ FDA List Indexer completed successfully.")
+            return True
+        except subprocess.CalledProcessError as e:
+            logger.error(f"❌ FDA List Indexer Failed: {e.stderr}")
+            return False
+
     def run_single_collector(self, name):
         """단일 수집기 실행 및 저장"""
         logger.info(f"🚀 Starting Collector: {name}")
+        
+        # FDA Specific Trigger
+        if name == "FDA":
+            if not self._run_fda_indexer():
+                logger.warning("⚠️ FDA Indexer failed, but proceeding with default collection logic...")
+        
         try:
             collector = self.collectors[name]
             
@@ -55,11 +85,9 @@ class DataIngestionScheduler:
                 logger.info(f"⚠️ {name}: No data collected.")
                 return 0
                 
-            # 중복 제거
-            df_new = merge_and_deduplicate(df, self.data_dir)
-            
-            # 저장
-            count = save_to_parquet(df_new, self.data_dir, name)
+            # 저장 및 중복 제거 (save_to_hub 사용)
+            # save_to_hub는 내부적으로 중복을 확인하고 신규 레코드만 저장함
+            count = save_to_hub(df, self.data_dir)
             logger.success(f"✅ {name}: {count} new records saved.")
             return count
             

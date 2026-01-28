@@ -217,10 +217,9 @@ def get_scheduler_instance():
     return DataIngestionScheduler(data_dir=Path("data/hub"))
 
 
-def run_collector(collector_name: str, days_back: int = 7):
+def run_collector(collector_name: str):
     """Run a specific collector and return results."""
     scheduler = get_scheduler_instance()
-    scheduler.days_back = days_back
     return scheduler.run_single_collector(collector_name)
 
 
@@ -360,20 +359,32 @@ def render_dashboard(df: pd.DataFrame):
     # Source Filter
     sources = st.sidebar.multiselect(
         "Source",
-        options=['FDA', 'RASFF', 'MFDS'],
-        default=['FDA', 'RASFF', 'MFDS']
+        options=['FDA', 'RASFF', 'MFDS', 'ImpFood'],
+        default=['FDA', 'RASFF', 'MFDS', 'ImpFood']
     )
     
-    # Hazard Category Filter
-    if 'hazard_category' in df.columns:
-        available_hazards = sorted(df['hazard_category'].dropna().unique().tolist())
-        hazard_categories = st.sidebar.multiselect(
-            "Hazard Category",
-            options=available_hazards,
-            default=available_hazards
+    # Hazard Class Filters
+    # 1. Hazard Class (Large)
+    if 'hazard_class_l' in df.columns:
+        available_class_l = sorted([x for x in df['hazard_class_l'].dropna().unique().tolist() if x])
+        hazard_class_l_filter = st.sidebar.multiselect(
+            "Hazard Class (Large)",
+            options=available_class_l,
+            default=available_class_l
         )
     else:
-        hazard_categories = None
+        hazard_class_l_filter = None
+
+    # 2. Hazard Class (Middle)
+    if 'hazard_class_m' in df.columns:
+        available_class_m = sorted([x for x in df['hazard_class_m'].dropna().unique().tolist() if x])
+        hazard_class_m_filter = st.sidebar.multiselect(
+            "Hazard Class (Middle)",
+            options=available_class_m,
+            default=available_class_m
+        )
+    else:
+        hazard_class_m_filter = None
 
     # Apply Filters
     df_filtered = df.copy()
@@ -381,8 +392,11 @@ def render_dashboard(df: pd.DataFrame):
     if sources:
         df_filtered = df_filtered[df_filtered['data_source'].isin(sources)]
         
-    if hazard_categories and 'hazard_category' in df_filtered.columns:
-        df_filtered = df_filtered[df_filtered['hazard_category'].isin(hazard_categories)]
+    if hazard_class_l_filter and 'hazard_class_l' in df_filtered.columns:
+        df_filtered = df_filtered[df_filtered['hazard_class_l'].isin(hazard_class_l_filter)]
+
+    if hazard_class_m_filter and 'hazard_class_m' in df_filtered.columns:
+        df_filtered = df_filtered[df_filtered['hazard_class_m'].isin(hazard_class_m_filter)]
         
     if date_range and 'date_parsed' in df_filtered.columns:
         start_date, end_date = date_range
@@ -427,62 +441,79 @@ def render_dashboard(df: pd.DataFrame):
         st.subheader("국가별 발생 현황 (Top 10)")
         if 'origin_country' in df_filtered.columns:
             top_countries = df_filtered['origin_country'].value_counts().head(10)
-            fig = px.bar(
-                x=top_countries.values,
-                y=top_countries.index,
-                orientation='h',
-                labels={'x': 'Count', 'y': 'Country'},
-                color=top_countries.values,
-                color_continuous_scale='Reds'
-            )
-            fig.update_layout(yaxis={'categoryorder': 'total ascending'})
-            st.plotly_chart(fig, width='stretch')
+            if not top_countries.empty:
+                fig = px.bar(
+                    x=top_countries.values,
+                    y=top_countries.index,
+                    orientation='h',
+                    labels={'x': 'Count', 'y': 'Country'},
+                    color=top_countries.values,
+                    color_continuous_scale='Reds'
+                )
+                fig.update_layout(yaxis={'categoryorder': 'total ascending'})
+                st.plotly_chart(fig, width='stretch')
+            else:
+                st.info("데이터가 없습니다.")
             
     with c_col2:
         st.subheader("일별 발생 추이")
         if 'date_parsed' in df_filtered.columns:
             daily_counts = df_filtered.groupby(df_filtered['date_parsed'].dt.date).size().reset_index(name='count')
-            fig2 = px.line(daily_counts, x='date_parsed', y='count', markers=True)
-            st.plotly_chart(fig2, width='stretch')
+            if not daily_counts.empty:
+                fig2 = px.line(daily_counts, x='date_parsed', y='count', markers=True)
+                st.plotly_chart(fig2, width='stretch')
+            else:
+                 st.info("데이터가 없습니다.")
     
-    # Second row for Hazard Category Distribution
+    # Second row for Hazard Class Distribution
     st.markdown("---")
+    st.subheader("위해요소 분류 분석")
     c_col3, c_col4 = st.columns(2)
     
     with c_col3:
-        st.subheader("위해요소 카테고리 분포")
-        if 'hazard_category' in df_filtered.columns:
-            hazard_dist = df_filtered['hazard_category'].value_counts()
-            # Filter out empty/null categories for cleaner visualization
-            hazard_dist = hazard_dist[hazard_dist.index != ""]
-            if not hazard_dist.empty:
+        st.caption("시험분류 (대분류) - Large Class")
+        if 'hazard_class_l' in df_filtered.columns:
+            hazard_l_dist = df_filtered['hazard_class_l'].value_counts()
+            hazard_l_dist = hazard_l_dist[hazard_l_dist.index != ""]
+            
+            if not hazard_l_dist.empty:
                 fig3 = px.pie(
-                    names=hazard_dist.index,
-                    values=hazard_dist.values,
-                    hole=0.4,  # Creates a donut chart
+                    names=hazard_l_dist.index,
+                    values=hazard_l_dist.values,
+                    hole=0.4,
                     color_discrete_sequence=px.colors.qualitative.Set3
                 )
                 fig3.update_traces(textposition='inside', textinfo='percent+label')
                 st.plotly_chart(fig3, width='stretch')
             else:
-                st.info("위해요소 카테고리 데이터가 없습니다.")
+                st.info("대분류 데이터가 없습니다.")
         else:
-            st.warning("hazard_category 컬럼을 찾을 수 없습니다.")
+            st.warning("hazard_class_l 컬럼 없음")
     
     with c_col4:
-        st.subheader("관심항목 분석")
-        if 'interest_item' in df_filtered.columns:
-            interest_counts = df_filtered['interest_item'].value_counts()
-            fig4 = px.bar(
-                x=interest_counts.index.map({True: '관심항목', False: '일반항목'}),
-                y=interest_counts.values,
-                labels={'x': '항목 구분', 'y': '건수'},
-                color=interest_counts.values,
-                color_continuous_scale='Blues'
-            )
-            st.plotly_chart(fig4, width='stretch')
+        st.caption("시험분류 (중분류) - Middle Class (Top 10)")
+        if 'hazard_class_m' in df_filtered.columns:
+            hazard_m_dist = df_filtered['hazard_class_m'].value_counts().head(10)
+            hazard_m_dist = hazard_m_dist[hazard_m_dist.index != ""]
+            
+            if not hazard_m_dist.empty:
+                fig4 = px.bar(
+                    x=hazard_m_dist.values,
+                    y=hazard_m_dist.index,
+                    orientation='h', # Horizontal bar
+                    labels={'x': 'Count', 'y': 'Category'},
+                    color=hazard_m_dist.values,
+                    color_continuous_scale='Viridis'
+                )
+                fig4.update_layout(yaxis={'categoryorder': 'total ascending'})
+                st.plotly_chart(fig4, width='stretch')
+            else:
+                st.info("중분류 데이터가 없습니다.")
         else:
-            st.info("interest_item 데이터를 확인할 수 없습니다.")
+             st.warning("hazard_class_m 컬럼 없음")
+             
+    # Interest Item Analysis (Moved to full width or separate section if needed, keeping simple for now)
+    # st.markdown("---")
 
     # Data Table
     st.markdown("### 🔍 상세 데이터 (Raw Data)")
@@ -548,20 +579,19 @@ def main():
 
     # Sidebar Controls
     st.sidebar.header("🎮 Data Controls")
-    days_back = st.sidebar.number_input("Days to Collect", min_value=1, value=7)
     
     col1, col2 = st.sidebar.columns(2)
     with col1:
         if st.button("🇰🇷 Run MFDS"):
             with st.spinner("Collecting MFDS..."):
-                count = run_collector("MFDS", days_back)
+                count = run_collector("MFDS")
                 st.success(f"{count} records")
                 st.cache_data.clear()
                 st.rerun()
     with col2:
         if st.button("🇺🇸 Run FDA"):
             with st.spinner("Collecting FDA..."):
-                count = run_collector("FDA", days_back)
+                count = run_collector("FDA")
                 st.success(f"{count} records")
                 st.cache_data.clear()
                 st.rerun()
@@ -569,10 +599,59 @@ def main():
     if st.sidebar.button("🔄 Run All Sources", type="primary"):
         with st.spinner("Running Full Pipeline..."):
             scheduler = get_scheduler_instance()
-            scheduler.days_back = days_back
             count = scheduler.run_all_collectors()
             st.success(f"Total {count} records collected.")
             st.cache_data.clear()
+            st.rerun()
+
+    # [Debug] Clear All Sources Button
+    if st.sidebar.button("🗑️ Clear All Sources", type="secondary", help="Delete all collected data, indexes, reports, and reset states."):
+        with st.spinner("Clearing all data, indexes, and logs..."):
+            # 1. Clear Hub Data
+            hub_path = Path("data/hub/hub_data.parquet")
+            if hub_path.exists():
+                try:
+                    hub_path.unlink()
+                    st.toast("✅ Hub data deleted.", icon="🗑️")
+                except Exception as e:
+                    st.error(f"Failed to delete hub data: {e}")
+
+            # 2. Clear FDA Master Index & Temp Files
+            try:
+                # Remove Master Index
+                master_idx = Path("data/reference/fda_list_master.parquet")
+                if master_idx.exists():
+                    master_idx.unlink()
+                    st.toast("✅ FDA Master Index reset.", icon="🇺🇸")
+                
+                master_csv = Path("data/reference/fda_list_master.csv")
+                if master_csv.exists():
+                    master_csv.unlink()
+
+                # Remove Individual FDA Parquet Files if any
+                for p_file in Path("data/hub").glob("fda_import_alerts_*.parquet"):
+                    p_file.unlink()
+                
+                # Remove Reports
+                report_file = Path("reports/fda_collect_summary.md")
+                if report_file.exists():
+                    report_file.unlink()
+                    st.toast("✅ FDA Reports cleared.", icon="�")
+
+            except Exception as e:
+                st.warning(f"Partial error during cleanup: {e}")
+
+            # 3. Clear State Data (FDA Counts, etc.)
+            state_path = Path("data/state/fda_counts.json")
+            if state_path.exists():
+                try:
+                    state_path.unlink()
+                except Exception as e:
+                    pass
+
+            # 4. Clear Cache and Rerun
+            st.cache_data.clear()
+            st.success("All sources, indexes, and logs have been completely cleared.")
             st.rerun()
 
     st.sidebar.markdown("---")

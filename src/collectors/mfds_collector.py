@@ -10,6 +10,7 @@ from pathlib import Path
 # 통합 스키마 및 유틸리티 가져오기
 from src.schema import UNIFIED_SCHEMA, validate_schema, generate_record_id, get_empty_dataframe
 from src.utils.fuzzy_matcher import FuzzyMatcher
+from src.utils.keyword_mapper import KeywordMapper
 
 load_dotenv()
 
@@ -36,8 +37,9 @@ class MFDSCollector:
         self.hazard_ref_df = self._load_reference_df("hazard_code_master.parquet")
         self.country_ref = self._load_country_reference()
         
-        # Initialize fuzzy matcher for improved lookup accuracy
+        # Initialize matchers
         self.fuzzy_matcher = FuzzyMatcher(similarity_threshold=80)
+        self.keyword_mapper = KeywordMapper()
         print("✅ 기준정보 로드 완료.")
 
 
@@ -110,25 +112,16 @@ class MFDSCollector:
         """
         시험항목 이름으로 분류(카테고리) 조회
         
-        Logic 2: Hazard Classification Lookup (Enhanced with Fuzzy Matching)
-        - Input: hazard_item (from API)
-        - Reference: hazard_code_master.parquet
-        - Matching Rule: Uses FuzzyMatcher with multi-strategy approach:
-          1. Exact match (fastest)
-          2. Keyword/partial match (handles "Aflatoxin B1" vs "Aflatoxin")
-          3. Fuzzy similarity match (handles typos and variations)
-        - Output Mapping:
-          - hazard_category ← M_KOR_NM (from reference)
-          - analyzable ← ANALYZABLE (from reference)
-          - interest_item ← INTEREST_ITEM (from reference)
-          
-        NEW RULE: If extracted item does not map to a category, use the item itself as category.
+        Output Mapping:
+          - hazard_class_m ← M_KOR_NM (category)
+          - hazard_class_l ← L_KOR_NM (top_category)
+          - analyzable ← ANALYZABLE
+          - interest_item ← INTEREST_ITEM
         """
         info = self.fuzzy_matcher.match_hazard_category(hazard_item, self.hazard_ref_df)
         
         # Rule: If category is missing but we have a hazard_item, use hazard_item as category
         if info["category"] is None and hazard_item:
-            # Clean up the hazard item slightly if needed (optional)
             info["category"] = hazard_item
             
         return info
@@ -183,7 +176,8 @@ class MFDSCollector:
                         "product_name": product_name,
                         "origin_country": "South Korea", # 국내식품
                         "notifying_country": "South Korea",
-                        "hazard_category": hazard_info["category"],
+                        "hazard_class_l": hazard_info["top_category"], 
+                        "hazard_class_m": hazard_info["category"],
                         "hazard_item": hazard_item,
                         "full_text": None,  # I2620 does not use full_text
                         "analyzable": hazard_info["analyzable"],
@@ -246,33 +240,49 @@ class MFDSCollector:
                     full_text = recall_reason  # Store the original text
                     hazard_item = None
                     
-                    # Rule-based filtering (Custom keywords)
-                    if full_text:
-                        if any(k in full_text for k in ["알레르기", "알러지"]):
-                            hazard_item = "표시위반(알러젠)"
-                        elif "잔류농약" in full_text:
-                            hazard_item = "잔류농약"
-                        elif any(k in full_text for k in ["수입신고", "무신고"]):
-                            hazard_item = "수입신고 위반"
-                        elif any(k in full_text for k in ["영업등록", "무등록"]):
-                            hazard_item = "미등록 영업"
-                        elif any(k in full_text for k in ["소비기한", "제조일자", "무표시", "미표시"]):
-                            hazard_item = "표시위반"
+                    # [Updated] Use KeywordMapper (Lookup Sheet)
+                    keyword_result = self.keyword_mapper.map_hazard(full_text, source='MFDS')
+                    hazard_item = None
+                    class_m_override = None
+                    class_l_override = None
+                    
+                    if keyword_result:
+                        hazard_item = keyword_result['hazard_item']
+                        class_m_override = keyword_result.get('class_m')
+                        class_l_override = keyword_result.get('class_l')
 
                     # Fallback to fuzzy matching if no keyword matched
                     if not hazard_item:
-                        extracted_hazard = self.fuzzy_matcher.extract_hazard_from_text(full_text, self.hazard_ref_df)
+                        extracted_hazard = self.fuzzy_matcher.extract_hazard_item_from_text(full_text, self.hazard_ref_df)
                         hazard_item = extracted_hazard if extracted_hazard else recall_reason
                     
-                    # 4. 데이터 정제 & Lookup
+                    # 4. 데이터 정제 (Product Lookup)
                     prod_info = self._lookup_product_info(product_type)
-                    hazard_info = self._lookup_hazard_info(hazard_item)
+
+                    # 5. Lookup을 통한 분류 정보 조회
+                    # NEW: Check for Overrides from Keyword Map
+                    if class_m_override and class_l_override:
+                        # Use mapped classes directly
+                        hazard_info = {
+                            "category": class_m_override,
+                            "top_category": class_l_override,
+                            "analyzable": True, # Default
+                            "interest": False   # Default
+                        }
+                        # Optional: Lookup just for analyzable/interest?
+                        # For now, trust the override or keep simple.
+                        # If needed, we can augment with lookup results for analyzable flag.
+                        base_info = self._lookup_hazard_info(hazard_item)
+                        hazard_info["analyzable"] = base_info["analyzable"]
+                        hazard_info["interest"] = base_info["interest"]
+                    else:
+                        hazard_info = self._lookup_hazard_info(hazard_item)
                     
-                    # 5. 상세 출처 생성
+                    # 6. 상세 출처 생성
                     source_prefix = "회수판매중지"
                     source_detail = f"{source_prefix}-{unique_seq}" if unique_seq else f"{source_prefix}-UNKNOWN"
                     
-                    # 6. 통합 스키마 매핑 (14 Columns Strict)
+                    # 7. 통합 스키마 매핑 (14 Columns Strict)
                     record = {
                         "registration_date": reg_date,
                         "data_source": "MFDS",
@@ -283,7 +293,8 @@ class MFDSCollector:
                         "product_name": product_name,
                         "origin_country": "South Korea",  # 국내식품 회수
                         "notifying_country": "South Korea",
-                        "hazard_category": hazard_info["category"],
+                        "hazard_class_l": hazard_info["top_category"], 
+                        "hazard_class_m": hazard_info["category"],
                         "hazard_item": hazard_item,  # Extracted or original
                         "full_text": full_text,  # Store original text
                         "analyzable": hazard_info["analyzable"],
@@ -411,7 +422,20 @@ class MFDSCollector:
                     # 3. NEW LOGIC: Extract hazard_item from full_text using fuzzy matching
                     # Combine hazard_text and BDT for more comprehensive extraction
                     full_text = f"{hazard_text} {bdt_text}".strip()
-                    extracted_hazard = self.fuzzy_matcher.extract_hazard_from_text(full_text, self.hazard_ref_df)
+                    
+                    # [Updated] Check KeywordMapper first
+                    keyword_result = self.keyword_mapper.map_hazard(full_text, source='MFDS')
+                    extracted_hazard = None
+                    class_m_override = None
+                    class_l_override = None
+                    
+                    if keyword_result:
+                        extracted_hazard = keyword_result['hazard_item']
+                        class_m_override = keyword_result.get('class_m')
+                        class_l_override = keyword_result.get('class_l')
+                    
+                    if not extracted_hazard:
+                        extracted_hazard = self.fuzzy_matcher.extract_hazard_item_from_text(full_text, self.hazard_ref_df)
                     
                     # Use extracted hazard if found, otherwise use original hazard_text
                     hazard_item = extracted_hazard if extracted_hazard else hazard_text
@@ -420,7 +444,19 @@ class MFDSCollector:
                     origin_country = self._extract_origin_from_bdt(bdt_text)
                     
                     # 5. Lookup을 통한 분류 정보 조회
-                    hazard_info = self._lookup_hazard_info(hazard_item)
+                    if class_m_override and class_l_override:
+                        hazard_info = {
+                            "category": class_m_override,
+                            "top_category": class_l_override,
+                            "analyzable": True,
+                            "interest": False
+                        }
+                        # Augment analyzable/interest
+                        base_info = self._lookup_hazard_info(hazard_item)
+                        hazard_info["analyzable"] = base_info["analyzable"]
+                        hazard_info["interest"] = base_info["interest"]
+                    else:
+                        hazard_info = self._lookup_hazard_info(hazard_item)
                     
                     # 6. 상세 출처 생성
                     source_prefix = "해외 위해식품 회수"
@@ -437,7 +473,8 @@ class MFDSCollector:
                         "product_name": product_name,
                         "origin_country": origin_country,  # BDT에서 추출
                         "notifying_country": "South Korea",  # 고정값 (MFDS)
-                        "hazard_category": hazard_info["category"],
+                        "hazard_class_l": hazard_info["top_category"], 
+                        "hazard_class_m": hazard_info["category"],
                         "hazard_item": hazard_item,  # Extracted or original
                         "full_text": full_text,  # Store original text
                         "analyzable": hazard_info["analyzable"],

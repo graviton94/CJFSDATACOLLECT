@@ -23,7 +23,8 @@ UNIFIED_SCHEMA = [
     "product_name",             # 제품명
     "origin_country",           # 원산지
     "notifying_country",        # 통보국
-    "hazard_category",          # 분류(카테고리) (Lookup)
+    "hazard_class_l",           # 시험분류(대분류) (Lookup)
+    "hazard_class_m",           # 시험분류(중분류) (Lookup)
     "hazard_item",              # 시험항목 (위해정보 원본)
     "full_text",                # 전문 (원본 본문, I0490/I2810에서 사용)
     "analyzable",               # 분석가능여부 (Boolean Lookup)
@@ -44,7 +45,8 @@ DISPLAY_HEADERS = {
     "product_name": "제품명",
     "origin_country": "원산지",
     "notifying_country": "통보국",
-    "hazard_category": "분류(카테고리)",
+    "hazard_class_l": "시험분류(대분류)",
+    "hazard_class_m": "시험분류(중분류)",
     "hazard_item": "시험항목",
     "full_text": "전문",
     "analyzable": "분석가능여부",

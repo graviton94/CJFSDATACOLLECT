@@ -61,7 +61,8 @@ class RASFFCollector:
                             "product_name": subject, # RASFF는 Subject에 제품명이 포함됨
                             "origin_country": origin,
                             "notifying_country": "EU Member States",
-                            "hazard_category": "Uncategorized",
+                            "hazard_class_l": "Uncategorized",
+                            "hazard_class_m": "Uncategorized",
                             "hazard_item": subject, # 상세 내용을 위해 Subject 중복 사용
                             "full_text": None,  # RASFF does not provide full text
                             "analyzable": False,

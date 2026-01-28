@@ -56,9 +56,12 @@ class ImpFoodScraper:
     def _lookup_hazard_info(self, hazard_item):
         """
         시험항목 이름으로 분류(카테고리) 조회
-        - Enhanced with FuzzyMatcher for better matching accuracy
         
-        NEW RULE: If extracted item does not map to a category, use the item itself as category.
+        Output Mapping:
+          - hazard_class_m ← M_KOR_NM (category)
+          - hazard_class_l ← L_KOR_NM (top_category)
+          - analyzable ← ANALYZABLE
+          - interest_item ← INTEREST_ITEM
         """
         info = self.fuzzy_matcher.match_hazard_category(hazard_item, self.hazard_ref_df)
         
@@ -84,12 +87,6 @@ class ImpFoodScraper:
                 
                 # Performance optimization: Block images and fonts
                 def block_resources(route):
-                    """
-                    Block unnecessary resources to improve scraping performance.
-                    
-                    Args:
-                        route: Playwright route object containing the request
-                    """
                     if route.request.resource_type in ["image", "font", "stylesheet"]:
                         route.abort()
                     else:
@@ -103,15 +100,15 @@ class ImpFoodScraper:
                     
                     page.goto(target_url, timeout=60000)
                     
-                    # 리스트 로딩 대기 (첫 번째 카드의 제품명이 뜰 때까지)
+                    # 리스트 로딩 대기
                     try:
                         page.wait_for_selector("div.gallery.type2 ul li h4", timeout=10000)
                     except:
                         print(f"   ⚠️ Page {current_page}: 데이터 로딩 실패 또는 끝.")
                         break
                     
-                    # 카드 리스트 확보
-                    cards = page.locator("div.gallery.type2 ul li").all()
+                    # 카드 리스트 확보 (직계 자식으로 한정하여 정확한 개수 파악)
+                    cards = page.locator("div.gallery.type2 > ul > li").all()
                     print(f"   - Found {len(cards)} items.")
                     
                     if not cards:
@@ -119,9 +116,7 @@ class ImpFoodScraper:
                         
                     for card in cards:
                         try:
-                            # 1. ID 추출 (자바스크립트 링크의 ID 속성)
-                            # 예: <a href="javascript:fnShowVioltCtnt..." id="202600014999">
-                            # Locator를 사용하여 해당 a 태그를 찾음
+                            # 1. ID 추출
                             id_locator = card.locator("a[href^='javascript:fnShowVioltCtnt']")
                             if id_locator.count() == 0:
                                 continue
@@ -130,7 +125,7 @@ class ImpFoodScraper:
                             # 2. 날짜 추출
                             date_str = card.locator("span[title='부적합일자']").inner_text().strip()
                             
-                            # 3. 제품명 추출 (한글 + 영문)
+                            # 3. 제품명 추출
                             name_kr = card.locator("strong[title='제품한글명']").inner_text().strip()
                             name_en = card.locator("span[title='제품영문명']").inner_text().strip()
                             product_name = f"{name_kr} ({name_en})" if name_en else name_kr
@@ -139,17 +134,21 @@ class ImpFoodScraper:
                             product_type = card.locator("span[title='품목명']").inner_text().strip()
                             origin = card.locator("span[title='제조국가']").inner_text().strip()
                             
-                            # 5. 위반내역 (중요: title 속성에서 가져옴)
-                            # a 태그 안에 있는 span의 title 속성
-                            hazard_item = id_locator.locator("span").get_attribute("title")
+                            # 5. 위반내역 (reason)
+                            reason = id_locator.locator("span").get_attribute("title")
                             
-                            # Lookup (using updated logic that returns Names)
+                            # 6. 시험항목 추출
+                            full_text = reason
+                            extracted_hazard = self.fuzzy_matcher.extract_hazard_item_from_text(full_text, self.hazard_ref_df)
+                            hazard_item_value = extracted_hazard if extracted_hazard else reason
+                            
+                            # Lookup
                             prod_info = self._lookup_product_info(product_type)
-                            hazard_info = self._lookup_hazard_info(hazard_item)
+                            hazard_info = self._lookup_hazard_info(hazard_item_value)
 
-                            # 6. 스키마 매핑 (14 Columns)
+                            # 7. 스키마 매핑
                             record = {
-                                "registration_date": date_str, # 포맷이 이미 YYYY-MM-DD 형태임
+                                "registration_date": date_str,
                                 "data_source": "ImpFood",
                                 "source_detail": f"ImpFood-{unique_id}",
                                 "product_type": product_type,
@@ -158,9 +157,10 @@ class ImpFoodScraper:
                                 "product_name": product_name,
                                 "origin_country": origin,
                                 "notifying_country": "South Korea",
-                                "hazard_category": hazard_info["category"],
-                                "hazard_item": hazard_item,
-                                "full_text": None,  # ImpFood does not provide full text
+                                "hazard_class_l": hazard_info["top_category"], 
+                                "hazard_class_m": hazard_info["category"],
+                                "hazard_item": hazard_item_value,
+                                "full_text": full_text,
                                 "analyzable": hazard_info["analyzable"],
                                 "interest_item": hazard_info["interest"]
                             }

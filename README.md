@@ -43,9 +43,36 @@
   - 식품 및 사료 신속 경보 시스템 (Playwright Scraping)
 
 ### 2. Intelligent Data Processing
-- **Unified Schema:** 모든 소스를 13개 표준 컬럼으로 정규화.
+### 2. Intelligent Data Processing
+- **Unified Schema:** 모든 소스를 14개 표준 컬럼으로 정규화.
 - **Smart Lookup:** 기준정보(Parquet)를 활용하여 품목 유형(Hierarchy) 및 위해 분류(Category) 자동 매핑.
 - **Deduplication:** 소스별 고유 ID를 기반으로 중복 데이터 자동 제거.
+
+### 📜 Unified Schema (v2.1)
+모든 데이터는 아래 14개 컬럼으로 표준화됩니다.
+
+| Column | Description |
+|--------|-------------|
+| `registration_date` | 등록일자 (YYYY-MM-DD) |
+| `data_source` | 데이터소스 (FDA, RASFF, MFDS, ImpFood) |
+| `source_detail` | 상세출처 (API ID, Ref No 등) |
+| `product_type` | 품목유형 (원본) |
+| `top_level_product_type` | 최상위품목유형 (Lookup) |
+| `upper_product_type` | 상위품목유형 (Lookup) |
+| `product_name` | 제품명 |
+| `origin_country` | 원산지 |
+| `notifying_country` | 통보국 |
+| `hazard_class_l` | **시험분류(대분류)** (New) |
+| `hazard_class_m` | **시험분류(중분류)** (New) |
+| `hazard_item` | 시험항목 (위해정보 원본) |
+| `full_text` | 전문 (원본 본문) |
+| `analyzable` | 분석가능여부 (Boolean) |
+| `interest_item` | 관심항목 (Boolean) |
+
+### 🆕 Patch Notes (v2.1)
+- **Schema Update:** 기존 `hazard_category`가 모호하여 `hazard_class_l` (대분류)와 `hazard_class_m` (중분류)로 분리되었습니다.
+- **Improved Matching:** FDA, ImpFood 수집 시 전문(Full Text) 기반의 Fuzzy Matching 로직이 강화되었습니다.
+- **UI Enhancement:** 분류 체계 변경에 따른 대시보드 필터 및 차트(Pie/Bar)가 세분화되었습니다.
 
 ### 3. Interactive Dashboard
 - **Streamlit 기반 UI:** 데이터 검색, 필터링, 시각화(Plotly).

@@ -140,12 +140,26 @@ class FuzzyMatcher:
             if col in reference_df.columns:
                 for idx, ref_value in reference_df[col].items():
                     ref_normalized = self._normalize_text(ref_value)
+                    
+                    # Safety check: skip empty
                     if not ref_normalized:
                         continue
                     
                     # Check if the keyword exists in the search term
-                    # Use word boundary check to avoid partial matches like "lead" in "misleading"
-                    if ref_normalized in search_term:
+                    match_idx = search_term.find(ref_normalized)
+                    
+                    if match_idx != -1:
+                        # [Refined Logic] Single Character Boundary Check
+                        # If keyword is 1 char (e.g. "황", "납"), ensure it's not part of a longer word
+                        # This prevents "황" from matching "황색포도상구균"
+                        if len(ref_normalized) == 1:
+                            # Check character immediately after the match
+                            if match_idx + 1 < len(search_term):
+                                next_char = search_term[match_idx + 1]
+                                # If next char is alphanumeric (Korean/English/Number), assume it's part of a word -> Skip
+                                if next_char.isalnum():
+                                    continue
+                        
                         # Prefer longer, more specific matches
                         if len(ref_normalized) > best_match_length:
                             best_match = reference_df.loc[idx]
@@ -305,24 +319,17 @@ class FuzzyMatcher:
             hazard_ref_df: Reference DataFrame with hazard classifications
             
         Returns:
-            Dictionary with keys:
-            - 'category': Hazard category (M_KOR_NM)
+             Dictionary with keys:
+            - 'category': Hazard category (M_KOR_NM) - Middle Level
+            - 'top_category': Top Hazard category (L_KOR_NM) - Large Level
             - 'analyzable': Boolean indicating if item can be analyzed in lab
             - 'interest': Boolean indicating if item is of strategic interest
             
         Example:
             >>> matcher = FuzzyMatcher()
-            >>> # Short text - standard matching
             >>> result = matcher.match_hazard_category("Aflatoxin B1", hazard_df)
-            >>> # Long text - sentence scanning
-            >>> result = matcher.match_hazard_category(
-            ...     "The sample analysis revealed high levels of Aflatoxin B1 in the product",
-            ...     hazard_df
-            ... )
-            >>> print(result)
-            {'category': '곰팡이독소', 'analyzable': True, 'interest': True}
         """
-        info = {"category": None, "analyzable": False, "interest": False}
+        info = {"category": None, "top_category": None, "analyzable": False, "interest": False}
         
         if hazard_ref_df.empty or not raw_text:
             return info
@@ -359,12 +366,13 @@ class FuzzyMatcher:
         if matched_row is not None:
             # Extract output fields
             info["category"] = matched_row.get("M_KOR_NM") if "M_KOR_NM" in matched_row.index else None
+            info["top_category"] = matched_row.get("L_KOR_NM") if "L_KOR_NM" in matched_row.index else None
             info["analyzable"] = bool(matched_row.get("ANALYZABLE", False)) if "ANALYZABLE" in matched_row.index else False
             info["interest"] = bool(matched_row.get("INTEREST_ITEM", False)) if "INTEREST_ITEM" in matched_row.index else False
         
         return info
     
-    def extract_hazard_from_text(self, full_text: str, hazard_ref_df: pd.DataFrame) -> Optional[str]:
+    def extract_hazard_item_from_text(self, full_text: str, hazard_ref_df: pd.DataFrame) -> Optional[str]:
         """
         Extract the best matching hazard name from long text.
         
@@ -388,7 +396,7 @@ class FuzzyMatcher:
         Example:
             >>> matcher = FuzzyMatcher()
             >>> text = "이물(곤충)이 혼입된 제품으로 확인되어 회수 조치합니다"
-            >>> result = matcher.extract_hazard_from_text(text, hazard_df)
+            >>> result = matcher.extract_hazard_item_from_text(text, hazard_df)
             >>> print(result)
             '이물'
         """
