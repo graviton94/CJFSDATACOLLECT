@@ -6,7 +6,9 @@ FILES_CONFIG = {
     "품목유형": "product_code_master.parquet",
     "시험항목": "hazard_code_master.parquet",
     "개별기준규격": "individual_spec_master.parquet",
-    "공통기준규격": "common_spec_master.parquet"
+    "공통기준규격": "common_spec_master.parquet",
+    "FDA Import Alert 관리": "fda_list_master.parquet",
+    "FDA 품목유형 매핑": "fda_product_code_mapping.parquet"
 }
 
 MASTER_HEADER_MAP = {
@@ -138,4 +140,32 @@ MASTER_HEADER_MAP = {
         "LAST_UPDT_DTM": "최종수정일시",
         "IS_MANUAL_FIXED": "수동고정여부"
     },
+    "FDA Import Alert 관리": {
+        "Alert_No": "Alert 번호",
+        "Title": "제목",
+        "URL": "상세 링크",
+        "OASIS_Charge_Code_Line": "오아시스 코드",
+        "Product_Description": "제품 설명 헤더",
+        "Last_Updated_Date": "최종 업데이트일",
+        "Is_New_Or_Updated": "신규/업데이트 여부",
+        "Has_Red_List": "Red List 여부",
+        "Has_Yellow_List": "Yellow List 여부",
+        "Has_Green_List": "Green List 여부",
+        "IsCollect": "수집 여부",
+        "Manual_Hazard_Item": "수동 매핑 시험항목",
+        "Manual_Product_Type": "수동 매핑 품목유형",
+        "Manual_Class_M": "수동 매핑 중분류",
+        "Manual_Class_L": "수동 매핑 대분류"
+    },
+    "FDA 품목유형 매핑": {
+        "FDA_CODE": "FDA 코드",
+        "ENG_NM": "영문명",
+        "KOR_NM": "식약처 품목명",
+        "PRDLST_CD": "식약처 품목코드",
+        "HRNK_KOR_NM": "상위품목명",
+        "HRNK_PRDLST_CD": "상위품목코드",
+        "HTRK_KOR_NM": "최상위품목명",
+        "HTRK_PRDLST_CD": "최상위품목코드",
+        "IS_MANUAL_FIXED": "수동고정여부"
+    }
 }

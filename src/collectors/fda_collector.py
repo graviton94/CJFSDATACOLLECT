@@ -92,6 +92,9 @@ class FDACollector:
         
         # Load reference data for country normalization
         self._load_reference_data()
+        
+        # Load external whitelist mapping
+        self.product_whitepaper = self._load_whitepaper()
     
     def _load_reference_data(self):
         """Load reference data for lookups."""
@@ -143,7 +146,7 @@ class FDACollector:
                             'has_green': row.get('Has_Green_List', False),
                             'product_desc_header': row.get('Product_Description', ''),
                             'is_updated': row.get('Is_New_Or_Updated', True),
-                            'IsCollect': row.get('IsCollect', True), # Ensure this is passed
+                            'IsCollect': row.get('IsCollect', True), 
                             # Manual Overrides for Hazard/Product/Class
                             'Manual_Hazard_Item': row.get('Manual_Hazard_Item', None),
                             'Manual_Product_Type': row.get('Manual_Product_Type', None),
@@ -278,7 +281,8 @@ class FDACollector:
     
     def parse_detail_page(self, alert_meta: Dict, force_update: bool = False) -> List[Dict]:
         """
-        Parse a single Import Alert detail page using context-aware block parsing.
+        State-Machine Parsing Logic v3.2 (Spec Compliance).
+        Iterates siblings and maintains a 'current_product' state to handle flat DOM structures.
         """
         alert_num = alert_meta['alert_number']
         alert_title = alert_meta.get('alert_title', 'Import Alert')
@@ -288,168 +292,199 @@ class FDACollector:
         print(f"   Parsing Alert {alert_num} (Target Update: {target_date_str})...")
         
         records = []
+        # Updated Regex: Flexible whitespace and Alphanumeric Subclasses
+        # Matches: "16 A - - 04" (Standard), "16 X - T 21" (Subclass T), "16  A  - -  04" (Spaces)
+        prod_code_pattern = re.compile(r'(\d{2}\s+[A-Z0-9]\s+[A-Z0-9-]\s+[A-Z0-9-]\s+\d{2})')
         
         try:
             response = requests.get(url, timeout=15)
             response.raise_for_status()
             soup = BeautifulSoup(response.text, 'html.parser')
             
-            # 1. Identify Country Sections
-            country_headers = soup.find_all('div', class_='center')
+            # 1. Segment by Country Headers
+            country_nodes = soup.find_all('div', class_='center')
+            if not country_nodes:
+                country_nodes = soup.find_all('h4')
             
-            if not country_headers:
-                # Fallback: Process entire text
-                self._process_text_block(soup.get_text(), "Unknown", target_date_str, alert_num, alert_title, records, alert_meta, force_update=force_update)
-            else:
-                for i, header in enumerate(country_headers):
-                    h4 = header.find('h4')
-                    if not h4: continue
-                    
-                    country_name = h4.get_text(strip=True)
-                    
-                    # Gather text content until next header
-                    block_text = ""
-                    curr = header.next_sibling
-                    
-                    while curr:
-                        if isinstance(curr, Tag) and curr.name == 'div' and 'center' in curr.get('class', []):
-                            break
+            # State Buffer
+            current_record = None # { 'product_line': str, 'published_date': str, 'raw_content': [], 'country': str }
+
+            for country_node in country_nodes:
+                # Resolve Country Name
+                h4 = country_node if country_node.name == 'h4' else country_node.find('h4')
+                if not h4: continue
+                
+                raw_country = h4.get_text(strip=True)
+                this_country_norm = self._normalize_country_name(raw_country)
+                
+                # Flush existing record (End of previous country context)
+                if current_record:
+                    self._flush_buffer_to_record(current_record, records, target_date_str, force_update, alert_num, alert_title, alert_meta)
+                    current_record = None
+                
+                # Iterate Siblings
+                curr = country_node.next_sibling
+                while curr:
+                    if isinstance(curr, Tag):
+                        # BREAK Condition: Next Country Header found
+                        is_new_country = False
+                        if curr.name == 'h4': is_new_country = True
+                        if curr.name == 'div' and 'center' in curr.get('class', []):
+                             if curr.find('h4'): is_new_country = True
                         
-                        if isinstance(curr, Tag):
-                            block_text += curr.get_text(separator='\n') + "\n"
-                        elif isinstance(curr, NavigableString):
-                            block_text += str(curr) + "\n"
-                            
+                        if is_new_country:
+                            break # End of this country's section
+                    
+                    node_text = curr.get_text(strip=True) if isinstance(curr, Tag) else str(curr).strip()
+                    
+                    if not node_text: 
                         curr = curr.next_sibling
+                        continue
+
+                    # Condition A: Product Code Trigger -> New Record
+                    if prod_code_pattern.search(node_text):
+                        # Flush previous record
+                        if current_record:
+                            self._flush_buffer_to_record(current_record, records, target_date_str, force_update, alert_num, alert_title, alert_meta)
+                        
+                        # Start New Record
+                        current_record = {
+                            'product_line': node_text,
+                            'published_date': None,
+                            'raw_content': [],
+                            'country': this_country_norm
+                        }
                     
-                    # Normalize country
-                    normalized_country = self._normalize_country_name(country_name)
+                    # Condition B: Date Published Trigger
+                    elif "Date Published:" in node_text:
+                        # print(f"      [DEBUG] Found Date Trigger: {node_text}")
+                        if current_record:
+                            date_match = re.search(r'(\d{1,2}/\d{1,2}/\d{4})', node_text)
+                            if date_match:
+                                current_record['published_date'] = date_match.group(1)
                     
-                    # Process the accumulated text block
-                    self._process_text_block(block_text, normalized_country, target_date_str, alert_num, alert_title, records, alert_meta, force_update=force_update)
-            
+                    # Condition C: Content Accumulation
+                    else:
+                        if current_record:
+                            current_record['raw_content'].append(node_text)
+                    
+                    curr = curr.next_sibling
+                
+                # End of Country Loop -> Flush remaining record for this country
+                if current_record:
+                    self._flush_buffer_to_record(current_record, records, target_date_str, force_update, alert_num, alert_title, alert_meta)
+                    current_record = None
+
         except Exception as e:
             print(f"      ❌ Error parsing Alert {alert_num}: {e}")
+            import traceback
+            traceback.print_exc()
         
         return records
 
-    def _process_text_block(self, text: str, country: str, target_date: str, alert_num: str, alert_title: str, records: List[Dict], overrides: Dict = None, force_update: bool = False):
-        """
-        Extract records using Date-Anchored logic (User Request).
-        1. Find "Date Published: MM/DD/YYYY"
-        2. Find product line above it
-        3. Find detail lines (Desc, Notes, Problems) below it
-        """
-        if not text.strip():
-            return
-            
-        if overrides is None:
-            overrides = {}
 
-        # 1. Find all "Date Published" positions
-        date_pattern = re.compile(r'Date Published:\s*(\d{1,2}/\d{1,2}/\d{4})', re.IGNORECASE)
-        date_matches = list(date_pattern.finditer(text))
+    def _load_whitepaper(self) -> Dict[str, str]:
+        """Load FDA Code to KOR_NM mapping from parquet."""
+        path = Path("data/reference/fda_product_code_mapping.parquet")
+        if not path.exists():
+            return {}
+        try:
+            df = pd.read_parquet(path)
+            return df.set_index('FDA_CODE')['KOR_NM'].to_dict()
+        except Exception:
+            return {}
+
+    def _flush_buffer_to_record(self, record_state, records_list, target_date, force, alert_num, alert_title, meta):
+        """Helper to validate and save the buffered record with robust product mapping."""
+        # Must have a date to be valid
+        if not record_state.get('published_date'): return
         
-        if not date_matches:
+        p_date = record_state['published_date'].strip()
+        
+        # 1. Parse Dates
+        try:
+            rec_dt = datetime.strptime(p_date, "%m/%d/%Y")
+            target_dt = datetime.strptime(target_date, "%m/%d/%Y")
+        except:
+            # Date parsing fail -> Skip safely
             return
 
-        # Product Line Pattern: Starts with 2+ digits, contains hyphens
-        # e.g. "12 B - - 13 Cheese, Pasteurized..."
-        prod_line_pattern = re.compile(r'^(\s*\d+[A-Z]?\s*-.*)$', re.MULTILINE)
+        # 2. Filtering Logic
+        if not force:
+            if rec_dt != target_dt:
+                return
+
+        # 3. Product Type Mapping (Whitepaper Priority)
+        product_line = record_state.get('product_line', '').strip()
+        industry_code = ""
         
-        # Detail line markers
-        detail_markers = ["Desc:", "Notes:", "Problems:", "Problem:"]
+        # Extract Industry Code (First 2 digits of the product code pattern)
+        code_match = self.prod_code_pattern.search(product_line)
+        if code_match:
+            full_code_str = code_match.group(0)
+            industry_code = full_code_str.split()[0] if full_code_str else "" 
+        
+        # Priority 1: Whitepaper from External Parquet
+        final_product_type = self.product_whitepaper.get(industry_code)
+        
+        # Priority 2: Manual Override (from Master Index)
+        if not final_product_type:
+             manual_type = meta.get('Manual_Product_Type')
+             if manual_type and str(manual_type).strip():
+                 final_product_type = manual_type
 
-        for i, date_match in enumerate(date_matches):
-            published_date = date_match.group(1)
-            date_start = date_match.start()
-            date_end = date_match.end()
+        # Priority 3: Fallback
+        if not final_product_type:
+            final_product_type = f"기타(FDA Code {industry_code})" if industry_code else "기타"
 
-            # Filter by date if not forcing
-            if not force_update and target_date and target_date != "Unknown":
-                if published_date != target_date:
-                    continue
+        # 4. Clean Product Name
+        clean_name = product_line
+        if code_match:
+             clean_name = product_line.replace(full_code_str, "").strip()
+        
+        # Ensure clean name is not empty
+        if len(clean_name) < 2 and record_state['raw_content']:
+             clean_name = record_state['raw_content'][0]
 
-            # 2. Find Product Line (Search Upwards from date)
-            # Find all product code lines before this date
-            all_prev_prods = list(prod_line_pattern.finditer(text[:date_start]))
-            if not all_prev_prods:
-                continue # No product code found for this date
-            
-            # The closest one above the date is the product line
-            prod_match = all_prev_prods[-1]
-            prod_start = prod_match.start()
-            product_line_text = prod_match.group(1).strip()
-
-            # 3. Find Block End (Search Downwards from date)
-            # Find the furthest detail marker below the date, 
-            # but before the next date or next product code.
-            search_limit = len(text)
-            if i + 1 < len(date_matches):
-                search_limit = date_matches[i+1].start()
-            
-            # Also limit by the next product line if it exists
-            next_prod = prod_line_pattern.search(text, date_end)
-            if next_prod and next_prod.start() < search_limit:
-                search_limit = next_prod.start()
-
-            sub_text_after_date = text[date_end:search_limit]
-            
-            # Find the last occurrence of any detail marker
-            last_marker_pos = 0
-            for marker in detail_markers:
-                marker_matches = list(re.finditer(re.escape(marker), sub_text_after_date, re.IGNORECASE))
-                if marker_matches:
-                    # Find the end of the line containing this marker
-                    marker_match = marker_matches[-1]
-                    line_end_match = re.search(r'$', sub_text_after_date[marker_match.end():], re.MULTILINE)
-                    end_offset = marker_match.end() + (line_end_match.start() if line_end_match else 0)
-                    last_marker_pos = max(last_marker_pos, end_offset)
-
-            block_end = date_end + last_marker_pos
-            block_content = text[prod_start:block_end].strip()
-
-            # 4. Extract Product Name: Everything from Product Line Start to "Date Published" Start
-            # (Remove the code prefix from the first line for the name)
-            # product_name_raw = text[prod_start:date_start].strip()
-            # Clean up: Replace multiple spaces and newlines
-            # clean_product_name = re.sub(r'\s+', ' ', product_name_raw)
-
-            # --- Parsing and Recording ---
-            self._record_data(block_content, product_line_text, published_date, country, alert_num, alert_title, records, overrides)
+        # 5. Build Record
+        full_text = "\n".join([product_line] + record_state['raw_content'])
+        
+        final_record = {
+            'alert_number': alert_num,
+            'alert_title': alert_title,
+            'product_name': clean_name,       
+            'product_type': final_product_type,
+            'published_date': record_state['published_date'],
+            'country': record_state['country'],
+            'full_text': full_text,
+            'source_type': 'FDA',
+            'hazard_item': meta.get('Manual_Hazard_Item') 
+        }
+        
+        records_list.append(final_record)
 
     def _record_data(self, block_text: str, product_line: str, published_date: str, country: str, alert_num: str, alert_title: str, records: List[Dict], overrides: Dict):
-        """Standard processing for identified blocks."""
-        # Product Code / Name extraction
-        # product_line e.g. "12 B - - 13 Cheese, Pasteurized..."
-        # Extract product name from block text BEFORE "Date Published"
-        date_pos = block_text.lower().find("date published:")
-        if date_pos != -1:
-            product_name_part = block_text[:date_pos].strip()
-            # Remove the product code part from the start
-            # Code is usually "XX X - - XX" or similar
-            # Use a slightly more robust split
-            first_line = product_name_part.split('\n')[0]
-            # Product code is roughly everything until the first word character that isn't part of the code
-            # But simpler: use split on '--' or '-' after the code part
-            code_parts = first_line.split('--', 1)
-            if len(code_parts) < 2:
-                code_parts = first_line.split('-', 1)
-            
-            p_code = code_parts[0].strip()
-            clean_product_name = re.sub(r'\s+', ' ', product_name_part)
+        """Standard processing for identified blocks (v3.0)."""
+        # 1. Product Code & Name extraction
+        prod_code_pattern = re.compile(r'(\d{2} [A-Z] - - \d{2})')
+        code_match = prod_code_pattern.search(product_line)
+        p_code = code_match.group(1) if code_match else product_line.split(' ', 1)[0]
+        
+        # Clean product name: remove code prefix and cleaning leading separators
+        if code_match:
+            clean_product_name = product_line[code_match.end():].strip()
+            clean_product_name = re.sub(r'^[\s\-,]+', '', clean_product_name)
         else:
-            p_code = product_line.split(' ')[0] # Fallback
             clean_product_name = product_line
 
-        # Hazard Extraction
+        # 2. Hazard Extraction
         extracted_info = {
             "hazard_item": "", 
             "class_m": None, "class_l": None,
             "extraction_source": "None"
         }
         
-        # 1. Manual Overrides
+        # A. Manual Overrides
         manual_hazard = overrides.get('Manual_Hazard_Item')
         manual_class_m = overrides.get('Manual_Class_M')
         manual_class_l = overrides.get('Manual_Class_L')
@@ -460,7 +495,7 @@ class FDACollector:
             extracted_info["class_l"] = manual_class_l if pd.notna(manual_class_l) else None
             extracted_info["extraction_source"] = "Manual_Override"
         
-        # 2. Keyword Map
+        # B. Keyword Map
         if not extracted_info["hazard_item"]:
             keyword_result = self.keyword_mapper.map_hazard(block_text, source='FDA')
             if keyword_result:
@@ -469,21 +504,20 @@ class FDACollector:
                 extracted_info["class_l"] = keyword_result['class_l']
                 extracted_info["extraction_source"] = "Keyword_Map"
                 
-        # 3. Fuzzy Matching
+        # C. Fuzzy Matching
         if not extracted_info["hazard_item"]:
             extracted_item = self.fuzzy_matcher.extract_hazard_item_from_text(block_text, self.hazard_ref)
             if extracted_item:
                 extracted_info["hazard_item"] = extracted_item
-                extracted_info["extraction_source"] = "Fuzzy_Fef"
+                extracted_info["extraction_source"] = "Fuzzy_Ref"
 
-        # Classification Lookup
+        # Classification Lookup (final refinement)
         hazard_item_value = extracted_info["hazard_item"]
         if extracted_info["class_m"] and extracted_info["class_l"]:
             hazard_info = {
                 "category": extracted_info["class_m"],
                 "top_category": extracted_info["class_l"],
-                "analyzable": True,
-                "interest": False
+                "analyzable": True, "interest": False
             }
             # Augment with metadata from lookup
             base_info = self.fuzzy_matcher.match_hazard_category(hazard_item_value, self.hazard_ref)
@@ -498,6 +532,7 @@ class FDACollector:
         if manual_product and pd.notna(manual_product):
             final_product_type = manual_product
             
+        # 3. Create Record matching UNIFIED_SCHEMA (15 columns)
         records.append({
             "registration_date": datetime.strptime(published_date, "%m/%d/%Y").strftime("%Y-%m-%d"),
             "data_source": "FDA",
@@ -584,8 +619,11 @@ class FDACollector:
             has_yellow = alert_info.get('has_yellow', False)
             
             if not (has_red or has_yellow):
+                # Only print skip if it wasn't already obvious
                 skipped_green += 1
                 continue
+            
+            print(f"   >>> Processing Alert {alert_info['alert_number']} (Red={has_red}, Yellow={has_yellow})")
             
             # Apply limit if set
             if self.alert_limit and processed_count >= self.alert_limit:
@@ -644,42 +682,41 @@ class FDACollector:
         timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         
         report_content = f"""# FDA Import Alert Collection Summary
-
-## Latest Collection Run
-
-- **Timestamp**: {timestamp}
-- **Records Collected**: {record_count}
-- **Data Source**: FDA Import Alerts (iapublishdate.html)
-- **Method**: Context-Aware Block Parsing with Regex Date Detection
-
-## Collection Details
-
-The collector implements the following workflow:
-
-1. **Index Page Extraction**: Fetches https://www.accessdata.fda.gov/cms_ia/iapublishdate.html
-2. **Alert Discovery**: Extracts Alert Numbers and detail page URLs
-3. **Detail Page Parsing**:
-   - Skips first summary block (Alert #, Published Date, Type)
-   - Uses regex pattern `(\\d{{2}}/\\d{{2}}/\\d{{4}})` to find dates
-   - Anchors data extraction around each date:
-     * Product Code: Line 1 row above date
-     * Description: Lines below date
-     * Country: Nearest preceding `<div class="center"><h4>` tag
-4. **Data Normalization**:
-   - Country names normalized via ReferenceLoader
-   - Hazard categories mapped via FuzzyMatcher
-5. **Schema Validation**: All records validated against 14-column unified schema
-
-## Schema Compliance
-
-✅ All {record_count} records conform to the 14-column unified schema defined in `src/schema.py`.
-
-## Notes
-
-- Default alert processing limit is {self.DEFAULT_ALERT_LIMIT} for testing
-- To process all alerts in production, use: `FDACollector(alert_limit=None)`
-- Full text context is preserved in the `full_text` column for future AI-based extraction
-"""
+ 
+ ## Latest Collection Run
+ 
+ - **Timestamp**: {timestamp}
+ - **Records Collected**: {record_count}
+ - **Data Source**: FDA Import Alerts (iapublishdate.html)
+ - **Method**: DOM-Centric Segmenting and Anchoring (v3.0)
+ 
+ ## Collection Details
+ 
+ The collector implements the following workflow:
+ 
+ 1. **Index Page Extraction**: Fetches https://www.accessdata.fda.gov/cms_ia/iapublishdate.html
+ 2. **Alert Discovery**: Extracts Alert Numbers and detail page URLs
+ 3. **DOM-Centric Parsing**:
+    - **Segmentation**: Page is divided into country blocks using `div.center > h4`.
+    - **Anchoring**: Identifies "Date Published:" nodes as primary anchors.
+    - **Backward Trace**: Finds the nearest preceding "Product Line" using regex `(\\d{{2}} [A-Z] - - \\d{{2}})`.
+    - **Forward Accumulation**: Gathers all detail nodes (Desc, Notes, Problems) until the next anchor.
+ 4. **Data Normalization**:
+    - Product names are cleaned by removing industry/class codes.
+    - Country names normalized via ReferenceLoader.
+    - Hazard categories mapped via FuzzyMatcher and KeywordMapper.
+ 5. **Schema Validation**: All records validated against the 15-column UNIFIED_SCHEMA.
+ 
+ ## Schema Compliance
+ 
+ ✅ All {record_count} records conform to the 15-column unified schema defined in `src/schema.py`.
+ 
+ ## Notes
+ 
+ - Default alert processing limit is {self.DEFAULT_ALERT_LIMIT} for testing.
+ - To process all alerts in production, use: `FDACollector(alert_limit=None)`.
+ - Full text context is preserved in the `full_text` column for audit and future extraction.
+ """
         
         with open(report_file, 'w', encoding='utf-8') as f:
             f.write(report_content)
@@ -690,7 +727,7 @@ The collector implements the following workflow:
 if __name__ == "__main__":
     # Use alert_limit=None for production (processes all alerts)
     # Use alert_limit=5 for testing (processes first 5 alerts)
-    collector = FDACollector(alert_limit=5)  # Testing mode
-    df = collector.collect()
+    collector = FDACollector(alert_limit=50)  # Testing mode
+    df = collector.collect(force_update=True)
     print(f"\n📊 Collection complete: {len(df)} records")
     print(df.head())

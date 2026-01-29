@@ -66,7 +66,8 @@ class ReferenceEnricher:
     def enrich_spec_master(self, filename: str):
         """
         Standardize and enrich Specification masters.
-        Ensures consistency for PRDLST_CD_NM and metadata.
+        Ensures consistency for PRDLST_CD_NM, TESTITM_NM and metadata.
+        Lookups names from Product and Hazard masters.
         """
         file_path = self.REF_DIR / filename
         if not file_path.exists():
@@ -79,15 +80,21 @@ class ReferenceEnricher:
             if 'IS_MANUAL_FIXED' not in df.columns:
                 df['IS_MANUAL_FIXED'] = False
                 
-            # If product master exists, we can cross-validate names
+            # 1. Product Master Lookup (for PRDLST_CD_NM)
             prod_path = self.REF_DIR / "product_code_master.parquet"
             if prod_path.exists():
                 prod_df = pd.read_parquet(prod_path)
                 p_map = prod_df.set_index('PRDLST_CD')['KOR_NM'].to_dict()
-                
-                # Update names if missing or potentially outdated from API
-                if 'PRDLST_CD' in df.columns and 'PRDLST_CD_NM' in df.columns:
-                    df['PRDLST_CD_NM'] = df['PRDLST_CD'].map(p_map).fillna(df['PRDLST_CD_NM'])
+                if 'PRDLST_CD' in df.columns:
+                    df['PRDLST_CD_NM'] = df['PRDLST_CD'].map(p_map).fillna(df.get('PRDLST_CD_NM', df['PRDLST_CD']))
+
+            # 2. Hazard Master Lookup (for TESTITM_NM)
+            haz_path = self.REF_DIR / "hazard_code_master.parquet"
+            if haz_path.exists():
+                haz_df = pd.read_parquet(haz_path)
+                h_map = haz_df.set_index('TESTITM_CD')['KOR_NM'].to_dict()
+                if 'TESTITM_CD' in df.columns:
+                    df['TESTITM_NM'] = df['TESTITM_CD'].map(h_map).fillna(df.get('TESTITM_NM', df['TESTITM_CD']))
             
             df.to_parquet(file_path, engine='pyarrow', index=False)
             logger.info(f"✅ Enriched Spec Master ({filename}): {len(df)} rows.")

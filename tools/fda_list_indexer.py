@@ -259,8 +259,9 @@ def main():
                 should_update = False
                 
                 if not old_record:
-                    # Case 1: New Alert
+                    # Case 1: New Alert -> Trigger full scraping
                     should_update = True
+                    df_new.at[index, 'Is_New_Or_Updated'] = True
                     # logger.info(f"New Alert detected: {alert_no}")
                 else:
                     # PRESERVE USER FLAGS: IsCollect, IsManual
@@ -270,32 +271,31 @@ def main():
                     df_new.at[index, 'Manual_Class_M'] = old_record.get('Manual_Class_M')
                     df_new.at[index, 'Manual_Class_L'] = old_record.get('Manual_Class_L')
 
-                    if old_record.get('Publish_Date') != new_date:
-                        # Case 2: Date Changed
-                        should_update = True
-                        logger.info(f"Update detected for {alert_no}: {old_record.get('Publish_Date')} -> {new_date}")
-                    elif pd.isna(old_record.get('OASIS_Charge_Code_Line')):
-                        # Case 3: Existing but incomplete data (retry parsing)
-                        should_update = True
-                    else:
-                        # Case 4: No Change - Copy existing details to new dataframe
-                        for col in detail_cols:
+                    # CRITICAL: Preserve existing metadata (Title, OASIS, Product Description)
+                    # We do not want to patch/overwrite these fields for existing records.
+                    df_new.at[index, 'Title'] = old_record.get('Title', row['Title'])
+                    for col in detail_cols:
+                        if col != 'Last_Updated_Date': # We handle date separately
                             df_new.at[index, col] = old_record.get(col)
-                        # Sync Last_Updated_Date just in case
+
+                    if old_record.get('Publish_Date') != new_date:
+                        # Case 2: Date Changed -> Only update date and mark for downstream collector
+                        # But skip should_update = True (no detail scraping)
+                        df_new.at[index, 'Is_New_Or_Updated'] = True
+                        df_new.at[index, 'Last_Updated_Date'] = new_date
+                        logger.info(f"Date updated for {alert_no}: {old_record.get('Publish_Date')} -> {new_date} (Metadata preserved)")
+                    else:
+                        # Case 3: No Change
                         df_new.at[index, 'Last_Updated_Date'] = old_record.get('Publish_Date')
+                        df_new.at[index, 'Is_New_Or_Updated'] = False
 
                 if should_update:
                     # OPTIMIZATION: If IsCollect is False, do NOT scrape details.
-                    # We accept the new metadata (Date/Title) from Web List (df_new), 
-                    # but skip the expensive detail page parsing.
                     if not df_new.at[index, 'IsCollect']:
-                        # Skip detail parsing, but ensure metadata is saved (it is already in df_new)
                         logger.info(f"Skipping update scrape for blocked alert: {alert_no}")
                         continue
                         
-                    # Mark as updated for downstream collector
-                    df_new.at[index, 'Is_New_Or_Updated'] = True
-                    # Add metadata dict to processing list
+                    # Add metadata dict to processing list for parse_alert_page
                     updates_needed.append(row.to_dict())
             
         except Exception as e:

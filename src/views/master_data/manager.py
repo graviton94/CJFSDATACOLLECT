@@ -1,6 +1,7 @@
 import streamlit as st
 from .constants import FILES_CONFIG, MASTER_HEADER_MAP, REF_DIR
 from .product_type import render_product_type_page
+from .hazard_item import render_hazard_item_page
 from .standard_view import render_standard_master_view
 
 def render_master_data_view(selected_name: str):
@@ -18,5 +19,7 @@ def render_master_data_view(selected_name: str):
     
     if selected_name == "품목유형":
         render_product_type_page(file_path, header_map)
+    elif selected_name == "시험항목":
+        render_hazard_item_page(file_path, header_map)
     else:
         render_standard_master_view(selected_name, file_path, header_map)

@@ -1,6 +1,7 @@
 import pandas as pd
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Dict
+import re
 
 class KeywordMapper:
     """
@@ -60,8 +61,21 @@ class KeywordMapper:
             
             if not keyword: continue
             
-            # Case-insensitive check
-            if keyword.lower() in text_lower:
+            # Robust Matching Logic
+            match_found = False
+            
+            # 1. Short Keywords (< 2 chars): Strict Boundary Check
+            if len(keyword) < 2:
+                # Use regex word boundary to prevent "물" matching "미생물"
+                if re.search(rf"\b{re.escape(keyword)}\b", text_lower):
+                    match_found = True
+            
+            # 2. Standard Keywords: Substring Match
+            else:
+                if keyword.lower() in text_lower:
+                    match_found = True
+            
+            if match_found:
                 # Prefer longest keyword match
                 if len(keyword) > best_len:
                     best_match_row = row
