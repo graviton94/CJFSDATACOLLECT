@@ -110,18 +110,24 @@ def render_hazard_item_page(file_path: Path, header_map: dict):
                 all_ls = sorted(df_full['L_KOR_NM'].dropna().unique().tolist())
                 if st.session_state.get("add_l_k") not in all_ls:
                     st.session_state["add_l_k"] = all_ls[0] if all_ls else ""
-                sel_add_l = st.selectbox("대분류 (추천)", all_ls, key="add_l_k")
+                sel_add_l = st.selectbox("대분류 (추천값 자동입력)", all_ls, key="add_l_k")
                 
                 all_ms = sorted(df_full[df_full['L_KOR_NM'] == sel_add_l]['M_KOR_NM'].dropna().unique().tolist())
                 if st.session_state.get("add_m_k") not in all_ms:
                     st.session_state["add_m_k"] = all_ms[0] if all_ms else ""
-                sel_add_m = st.selectbox("중분류 (추천)", all_ms, key="add_m_k")
+                sel_add_m = st.selectbox("중분류 (추천값 자동입력)", all_ms, key="add_m_k")
                 
                 c_add1, c_add2 = st.columns(2)
                 with c_add1:
-                    new_kor = st.text_input("한글명 입력", key="new_haz_name")
+                    new_kor = st.text_input("⚠️한글명 입력 (필수)", key="new_haz_name")
                 with c_add2:
-                    new_eng = st.text_input("영문명 입력", key="new_haz_eng")
+                    new_eng = st.text_input("영문명 입력 (추천값 자동입력)", key="new_haz_eng")
+                
+                c_add3, c_add4 = st.columns(2)
+                with c_add3:
+                    new_analyzable = st.checkbox("분석가능여부", value=True, key="new_haz_analyzable")
+                with c_add4:
+                    new_interest = st.checkbox("관심물질등록", value=False, key="new_haz_interest")
                 
                 st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
                 if st.button("➕ 항목 추가", type="secondary", use_container_width=True):
@@ -139,6 +145,8 @@ def render_hazard_item_page(file_path: Path, header_map: dict):
                                 'TESTITM_NM': final_name,
                                 'L_KOR_NM': sel_add_l,
                                 'M_KOR_NM': sel_add_m,
+                                'ANALYZABLE': st.session_state.get("new_haz_analyzable", True),
+                                'INTEREST_ITEM': st.session_state.get("new_haz_interest", False),
                                 'IS_MANUAL_FIXED': True,
                                 'TESTITM_CD': f"HAZ_{int(time.time())}", 'USE_YN': 'Y'
                             }

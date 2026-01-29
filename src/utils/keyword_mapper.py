@@ -16,12 +16,12 @@ class KeywordMapper:
     def _load_rules(self) -> pd.DataFrame:
         if not self.ref_path.exists():
             print(f"⚠️ Keyword mapping file not found: {self.ref_path}")
-            return pd.DataFrame(columns=['keyword', 'hazard_item', 'source'])
+            return pd.DataFrame(columns=['keyword', 'TESTITM_NM', 'source'])
             
         try:
             df = pd.read_parquet(self.ref_path)
             # Ensure columns exist
-            required = ['keyword', 'hazard_item']
+            required = ['keyword', 'TESTITM_NM']
             if not all(col in df.columns for col in required):
                 print(f"⚠️ Keyword map missing columns: {df.columns}")
                 return pd.DataFrame()
@@ -81,11 +81,10 @@ class KeywordMapper:
                     best_match_row = row
                     best_len = len(keyword)
         
-        if best_match_row is not None:
             return {
-                "hazard_item": best_match_row.get('hazard_item'),
-                "class_m": best_match_row.get('class_m'),
-                "class_l": best_match_row.get('class_l')
+                "hazard_item": best_match_row.get('TESTITM_NM'),
+                "class_m": best_match_row.get('M_KOR_NM'),
+                "class_l": best_match_row.get('L_KOR_NM')
             }
                     
         return None

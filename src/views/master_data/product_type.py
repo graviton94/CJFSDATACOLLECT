@@ -43,6 +43,12 @@ def render_product_type_page(file_path: Path, header_map: dict):
             lookup = df_full.set_index('PRDLST_CD')['KOR_NM'].to_dict()
             df_full['최상위품목명'] = df_full['HTRK_PRDLST_CD'].map(lookup).fillna(df_full['HTRK_PRDLST_CD'])
             df_full['상위품목명'] = df_full['HRNK_PRDLST_CD'].map(lookup).fillna(df_full['HRNK_PRDLST_CD'])
+            
+            # Sort by requested priority: Name > Code > Parent > Top
+            df_full = df_full.sort_values(
+                by=['KOR_NM', 'PRDLST_CD', '상위품목명', '최상위품목명'],
+                ascending=[True, True, True, True]
+            )
 
         # --- Section 1: Top Controls (Search & Add) ---
         main_col1, main_col2 = st.columns(2)
@@ -117,7 +123,7 @@ def render_product_type_page(file_path: Path, header_map: dict):
                     st.session_state["add_parent_k"] = all_parents[0] if all_parents else ""
                 sel_add_parent = st.selectbox("상위품목 (추천)", all_parents, key="add_parent_k")
                 
-                st.text_input("신규 한글명 입력 (Enter로 추천)", key="new_input_name")
+                st.text_input("⚠️신규 한글명 입력 (필수)", key="new_input_name")
                 
                 st.markdown("<div style='height: 10px;'></div>", unsafe_allow_html=True)
                 if st.button("➕ 항목 추가", type="secondary", use_container_width=True):
@@ -161,8 +167,15 @@ def render_product_type_page(file_path: Path, header_map: dict):
             disp_df = disp_df.head(MAX_DISPLAY_ROWS)
             st.warning(f"⚠️ 데이터가 너무 많아 상위 {MAX_DISPLAY_ROWS:,}건만 표시합니다. 계층 필터를 사용하여 범위를 좁혀주세요.")
             
-        cols_to_map = {'KOR_NM': '한글명', 'PIAM_KOR_NM': '속성', 'IS_MANUAL_FIXED': '수동고정여부'}
-        disp_df = disp_df[['최상위품목명', '상위품목명', 'KOR_NM', 'PIAM_KOR_NM', 'IS_MANUAL_FIXED']].rename(columns=cols_to_map)
+        cols_to_map = {
+            'KOR_NM': '한글명', 
+            'PRDLST_CD': '품목코드',
+            '상위품목명': '상위품목명',
+            '최상위품목명': '최상위품목명',
+            'PIAM_KOR_NM': '속성', 
+            'IS_MANUAL_FIXED': '수동고정여부'
+        }
+        disp_df = disp_df[['KOR_NM', 'PRDLST_CD', '상위품목명', '최상위품목명', 'PIAM_KOR_NM', 'IS_MANUAL_FIXED']].rename(columns=cols_to_map)
         
         edited_raw = st.data_editor(disp_df, num_rows="dynamic", width='stretch', height=500, key=ed_key)
 

@@ -98,7 +98,7 @@ MASTER_HEADER_MAP = {
     "공통기준규격": {
         "CMMN_SPEC_SEQ": "공통기준종류코드일련번호",
         "CMMN_SPEC_CD": "공통기준종류코드",
-        "SPEC_NM": "공통기준종류명",
+        "SPEC_NM": "(참고)공통기준종류명",
         "PRDLST_CD": "품목분류코드",
         "PRDLST_CD_NM": "품목명",
         "TESTITM_CD": "시험항목코드",
@@ -151,11 +151,15 @@ MASTER_HEADER_MAP = {
         "Has_Red_List": "Red List 여부",
         "Has_Yellow_List": "Yellow List 여부",
         "Has_Green_List": "Green List 여부",
-        "IsCollect": "수집 여부",
-        "Manual_Hazard_Item": "수동 매핑 시험항목",
-        "Manual_Product_Type": "수동 매핑 품목유형",
-        "Manual_Class_M": "수동 매핑 중분류",
-        "Manual_Class_L": "수동 매핑 대분류"
+        "IsCollect": "모니터링 여부",
+        "Manual_Hazard_Item": "시험항목",
+        "Manual_Hazard_Item_CD": "시험항목 코드",
+        "Manual_Product_Type_NM": "품목유형",
+        "Manual_Product_Type": "품목유형 코드",
+        "Manual_HRNK_NM": "상위품목",
+        "Manual_HTRK_NM": "최상위품목",
+        "Manual_Class_M": "중분류",
+        "Manual_Class_L": "대분류"
     },
     "FDA 품목유형 매핑": {
         "FDA_CODE": "FDA 코드",

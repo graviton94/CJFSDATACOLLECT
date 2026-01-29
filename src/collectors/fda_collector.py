@@ -71,6 +71,10 @@ class FDACollector:
     # Regex pattern for MM/DD/YYYY date format (no word boundaries for flexibility)
     DATE_PATTERN = re.compile(r'(\d{2}/\d{2}/\d{4})')
     
+    # Updated Regex: Flexible whitespace and Alphanumeric Subclasses
+    # Matches: "16 A - - 04" (Standard), "16 X - T 21" (Subclass T), "16  A  - -  04" (Spaces)
+    PROD_CODE_PATTERN = re.compile(r'(\d{2}\s+[A-Z0-9]\s+[A-Z0-9-]\s+[A-Z0-9-]\s+\d{2})')
+    
     def __init__(self, alert_limit: Union[int, str, None] = None):
         """
         Initialize the collector with necessary directories.
@@ -292,9 +296,6 @@ class FDACollector:
         print(f"   Parsing Alert {alert_num} (Target Update: {target_date_str})...")
         
         records = []
-        # Updated Regex: Flexible whitespace and Alphanumeric Subclasses
-        # Matches: "16 A - - 04" (Standard), "16 X - T 21" (Subclass T), "16  A  - -  04" (Spaces)
-        prod_code_pattern = re.compile(r'(\d{2}\s+[A-Z0-9]\s+[A-Z0-9-]\s+[A-Z0-9-]\s+\d{2})')
         
         try:
             response = requests.get(url, timeout=15)
@@ -342,7 +343,7 @@ class FDACollector:
                         continue
 
                     # Condition A: Product Code Trigger -> New Record
-                    if prod_code_pattern.search(node_text):
+                    if self.PROD_CODE_PATTERN.search(node_text):
                         # Flush previous record
                         if current_record:
                             self._flush_buffer_to_record(current_record, records, target_date_str, force_update, alert_num, alert_title, alert_meta)
@@ -419,7 +420,7 @@ class FDACollector:
         industry_code = ""
         
         # Extract Industry Code (First 2 digits of the product code pattern)
-        code_match = self.prod_code_pattern.search(product_line)
+        code_match = self.PROD_CODE_PATTERN.search(product_line)
         if code_match:
             full_code_str = code_match.group(0)
             industry_code = full_code_str.split()[0] if full_code_str else "" 
@@ -466,8 +467,7 @@ class FDACollector:
     def _record_data(self, block_text: str, product_line: str, published_date: str, country: str, alert_num: str, alert_title: str, records: List[Dict], overrides: Dict):
         """Standard processing for identified blocks (v3.0)."""
         # 1. Product Code & Name extraction
-        prod_code_pattern = re.compile(r'(\d{2} [A-Z] - - \d{2})')
-        code_match = prod_code_pattern.search(product_line)
+        code_match = self.PROD_CODE_PATTERN.search(product_line)
         p_code = code_match.group(1) if code_match else product_line.split(' ', 1)[0]
         
         # Clean product name: remove code prefix and cleaning leading separators

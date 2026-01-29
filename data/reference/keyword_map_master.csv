@@ -1,9 +1,36 @@
-﻿keyword,hazard_item,class_m,class_l,source
-알레르기,표시위반(알러젠),표시기준 위반,표시/기타,ALL
-알러지,표시위반(알러젠),표시기준 위반,표시/기타,ALL
-잔류농약,잔류농약,잔류농약,농약,ALL
-수입신고,수입신고 위반,기타,표시/기타,MFDS
-무신고,수입신고 위반,기타,표시/기타,MFDS
-영업등록,미등록 영업,기타,표시/기타,MFDS
-무등록,미등록 영업,기타,표시/기타,MFDS
-Salmonella,Salmonella,식중독균,미생물,ALL
+﻿keyword,TESTITM_NM,M_KOR_NM,L_KOR_NM,source,TESTITM_CD
+알레르기,표시위반(알러젠),표시기준 위반,표시/기타,ALL,Z-1
+알러지,표시위반(알러젠),표시기준 위반,표시/기타,ALL,Z-2
+잔류농약,잔류농약,잔류농약,농약,ALL,Z-3
+수입신고,수입신고 위반,기타,표시/기타,MFDS,Z-4
+무신고,수입신고 위반,기타,표시/기타,MFDS,Z-5
+영업등록,미등록 영업,기타,표시/기타,MFDS,Z-6
+무등록,미등록 영업,기타,표시/기타,MFDS,Z-7
+salmonella,살모넬라,식중독균,미생물,ALL,Z-8
+haccp,"HACCP,ISO 미준수",기타,기타,ALL,Z-9
+listeria,리스테리아모노사이토제네스,식중독균,미생물,ALL,Z-10
+monocytogenes,리스테리아모노사이토제네스,식중독균,미생물,ALL,Z-11
+staphylococcus,황색포도상구균,식중독균,미생물,ALL,Z-12
+aureus,황색포도상구균,식중독균,미생물,ALL,Z-13
+aflatoxin,곰팡이,기타미생물,미생물,ALL,Z-14
+not labeled,표시사항,물리화학적 특성,일반성분 및 기능성분,ALL,Z-15
+labeling,표시사항,물리화학적 특성,일반성분 및 기능성분,ALL,Z-16
+brilliantblue,식용색소청색제1호,식품 중 식품첨가물,화학물질,ALL,Z-17
+aluminium lake,식용색소,식품 중 식품첨가물,화학물질,ALL,Z-18
+indigocarmine,식용색소청색제2호,식품 중 식품첨가물,화학물질,ALL,Z-19
+indigo carmine,식용색소청색제2호,식품 중 식품첨가물,화학물질,ALL,Z-20
+fastgreen,식용색소녹색제3호,식품 중 식품첨가물,화학물질,ALL,Z-21
+fast green,식용색소녹색제3호,식품 중 식품첨가물,화학물질,ALL,Z-22
+amaranth,식용색소적색제2호,식품 중 식품첨가물,화학물질,ALL,Z-23
+erythrosine,식용색소적색제3호,식품 중 식품첨가물,화학물질,ALL,Z-24
+allurared,식용색소적색제40호,식품 중 식품첨가물,화학물질,ALL,Z-25
+allura red,식용색소적색제40호,식품 중 식품첨가물,화학물질,ALL,Z-26
+tartrazine,식용색소황색제4호,식품 중 식품첨가물,화학물질,ALL,Z-27
+sunsetyellow,식용색소황색제5호,식품 중 식품첨가물,화학물질,ALL,Z-28
+sunset yellow,식용색소황색제5호,식품 중 식품첨가물,화학물질,ALL,Z-29
+newcoccine,식용색소적색제102호,식품 중 식품첨가물,화학물질,ALL,Z-30
+indigotine,식용색소,식품 중 식품첨가물,화학물질,ALL,Z-31
+new coccine,식용색소적색제102호,식품 중 식품첨가물,화학물질,ALL,Z-32
+indigo tine,식용색소,식품 중 식품첨가물,화학물질,ALL,Z-33
+allura red,식용색소,식품 중 식품첨가물,화학물질,ALL,Z-34
+LEAD;,납,유해중금속,화학물질,ALL,Z-35
