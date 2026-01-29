@@ -78,6 +78,9 @@ class DataIngestionScheduler:
             # 수집 실행 (각 클래스의 메인 메서드 호출)
             if name in ["RASFF", "ImpFood"]:
                 df = collector.scrape() # RASFF와 ImpFood는 scrape() 메서드 사용
+            elif name == "FDA":
+                # User Requirement: Force update to skip 'is_updated' check and collect all target alerts
+                df = collector.collect(force_update=True)
             else:
                 df = collector.collect() # 나머지는 collect() 사용
                 

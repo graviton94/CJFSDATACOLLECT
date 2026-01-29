@@ -276,7 +276,7 @@ class FDACollector:
         
         return product_code_line, description, full_text
     
-    def parse_detail_page(self, alert_meta: Dict) -> List[Dict]:
+    def parse_detail_page(self, alert_meta: Dict, force_update: bool = False) -> List[Dict]:
         """
         Parse a single Import Alert detail page using context-aware block parsing.
         """
@@ -299,7 +299,7 @@ class FDACollector:
             
             if not country_headers:
                 # Fallback: Process entire text
-                self._process_text_block(soup.get_text(), "Unknown", target_date_str, alert_num, alert_title, records, alert_meta)
+                self._process_text_block(soup.get_text(), "Unknown", target_date_str, alert_num, alert_title, records, alert_meta, force_update=force_update)
             else:
                 for i, header in enumerate(country_headers):
                     h4 = header.find('h4')
@@ -326,169 +326,195 @@ class FDACollector:
                     normalized_country = self._normalize_country_name(country_name)
                     
                     # Process the accumulated text block
-                    self._process_text_block(block_text, normalized_country, target_date_str, alert_num, alert_title, records, alert_meta)
+                    self._process_text_block(block_text, normalized_country, target_date_str, alert_num, alert_title, records, alert_meta, force_update=force_update)
             
         except Exception as e:
             print(f"      ❌ Error parsing Alert {alert_num}: {e}")
         
         return records
 
-    def _process_text_block(self, text: str, country: str, target_date: str, alert_num: str, alert_title: str, records: List[Dict], overrides: Dict = None):
+    def _process_text_block(self, text: str, country: str, target_date: str, alert_num: str, alert_title: str, records: List[Dict], overrides: Dict = None, force_update: bool = False):
         """
-        Extract records from a country's text block by splitting into Product Blocks.
-        Strategy: Find lines starting with Product Code (Digits + Hyphens), 
-        treat everything until the next Product Code as one block.
+        Extract records using Date-Anchored logic (User Request).
+        1. Find "Date Published: MM/DD/YYYY"
+        2. Find product line above it
+        3. Find detail lines (Desc, Notes, Problems) below it
         """
         if not text.strip():
             return
-        
-        # Prepare overrides if passed as alert_meta (backward compat or simple pass)
-        # Actually expected overrides to be passed directly or extracted from alert_meta
+            
         if overrides is None:
             overrides = {}
-            
-        # Regex to identify a Product Code Line
-        # ... (Regex setup) ...
-        
-        # Regex to identify a Product Code Line
-        # Matches: Start of line, Optional whitespace, 2+ digits, anything, hyphen, anything, end of line
-        # e.g. "16 M - - 09 Octopus"
-        # STRENGTHENED: Exclude lines that look like dates (digits/digits/digits) to prevent false positives
-        prod_line_pattern = re.compile(r'(?m)^(\s*\d+[A-Z]?\s*-[^\n]+)$')
-        
-        # Additional filter: Explicitly ignore lines that are just dates
-        # Because sometimes date lines might match the relaxed regex if they contain hyphens instead of slashes
-        matches = [
-            m for m in prod_line_pattern.finditer(text) 
-            if not re.search(r'\d{1,2}[/-]\d{1,2}[/-]\d{4}', m.group(1))
-        ]
-        
-        for i, match in enumerate(matches):
-            start_idx = match.start()
-            # End index is the start of the next match, or end of text
-            end_idx = matches[i+1].start() if i + 1 < len(matches) else len(text)
-            
-            # Extract the full block for this product
-            block_content = text[start_idx:end_idx].strip()
-            
-            # The first line is the Product Line (from the capture group)
-            product_line = match.group(1).strip()
-            
-            # Process the block content to find Date and Details
-            self._parse_single_block(block_content, product_line, country, target_date, alert_num, alert_title, records, overrides)
 
-    def _parse_single_block(self, block_text: str, product_line: str, country: str, target_date: str, alert_num: str, alert_title: str, records: List[Dict], overrides: Dict = None):
-        """
-        Parse a single isolated product block (Product Line + Date + Details).
-        """
-        # Look for Date Published within this block
-        date_match = re.search(r'Date Published:\s*(\d{1,2}/\d{1,2}/\d{4})', block_text, re.IGNORECASE)
+        # 1. Find all "Date Published" positions
+        date_pattern = re.compile(r'Date Published:\s*(\d{1,2}/\d{1,2}/\d{4})', re.IGNORECASE)
+        date_matches = list(date_pattern.finditer(text))
         
-        if date_match:
+        if not date_matches:
+            return
+
+        # Product Line Pattern: Starts with 2+ digits, contains hyphens
+        # e.g. "12 B - - 13 Cheese, Pasteurized..."
+        prod_line_pattern = re.compile(r'^(\s*\d+[A-Z]?\s*-.*)$', re.MULTILINE)
+        
+        # Detail line markers
+        detail_markers = ["Desc:", "Notes:", "Problems:", "Problem:"]
+
+        for i, date_match in enumerate(date_matches):
             published_date = date_match.group(1)
-            
-            # Filter: Check against Target Date
-            if target_date and target_date != "Unknown":
+            date_start = date_match.start()
+            date_end = date_match.end()
+
+            # Filter by date if not forcing
+            if not force_update and target_date and target_date != "Unknown":
                 if published_date != target_date:
-                    return
+                    continue
 
-            # Extract Product Code (keep first part for Type)
-            parts = product_line.split('--', 1)
-            if len(parts) < 2:
-                parts = product_line.split('-', 1)
-            p_code = parts[0].strip()
+            # 2. Find Product Line (Search Upwards from date)
+            # Find all product code lines before this date
+            all_prev_prods = list(prod_line_pattern.finditer(text[:date_start]))
+            if not all_prev_prods:
+                continue # No product code found for this date
             
-            # USER REQUIREMENT:
-            # product_name = Text from start of block UNTIL "Date Published"
-            # Remove newlines for a clean single string
-            
-            # Get text before the date line
-            raw_product_text = block_text[:date_match.start()].strip()
-            # Replace newlines with spaces and clean up multiple spaces
-            clean_product_name = re.sub(r'\s+', ' ', raw_product_text)
+            # The closest one above the date is the product line
+            prod_match = all_prev_prods[-1]
+            prod_start = prod_match.start()
+            product_line_text = prod_match.group(1).strip()
 
-            # NEW LOGIC: Extract Hazard Item and Classifications from Block Text
+            # 3. Find Block End (Search Downwards from date)
+            # Find the furthest detail marker below the date, 
+            # but before the next date or next product code.
+            search_limit = len(text)
+            if i + 1 < len(date_matches):
+                search_limit = date_matches[i+1].start()
             
-            # --- Override & Extraction Logic ---
-            extracted_info = {
-                "hazard_item": "", 
-                "class_m": None, "class_l": None,
-                "extraction_source": "None"
+            # Also limit by the next product line if it exists
+            next_prod = prod_line_pattern.search(text, date_end)
+            if next_prod and next_prod.start() < search_limit:
+                search_limit = next_prod.start()
+
+            sub_text_after_date = text[date_end:search_limit]
+            
+            # Find the last occurrence of any detail marker
+            last_marker_pos = 0
+            for marker in detail_markers:
+                marker_matches = list(re.finditer(re.escape(marker), sub_text_after_date, re.IGNORECASE))
+                if marker_matches:
+                    # Find the end of the line containing this marker
+                    marker_match = marker_matches[-1]
+                    line_end_match = re.search(r'$', sub_text_after_date[marker_match.end():], re.MULTILINE)
+                    end_offset = marker_match.end() + (line_end_match.start() if line_end_match else 0)
+                    last_marker_pos = max(last_marker_pos, end_offset)
+
+            block_end = date_end + last_marker_pos
+            block_content = text[prod_start:block_end].strip()
+
+            # 4. Extract Product Name: Everything from Product Line Start to "Date Published" Start
+            # (Remove the code prefix from the first line for the name)
+            # product_name_raw = text[prod_start:date_start].strip()
+            # Clean up: Replace multiple spaces and newlines
+            # clean_product_name = re.sub(r'\s+', ' ', product_name_raw)
+
+            # --- Parsing and Recording ---
+            self._record_data(block_content, product_line_text, published_date, country, alert_num, alert_title, records, overrides)
+
+    def _record_data(self, block_text: str, product_line: str, published_date: str, country: str, alert_num: str, alert_title: str, records: List[Dict], overrides: Dict):
+        """Standard processing for identified blocks."""
+        # Product Code / Name extraction
+        # product_line e.g. "12 B - - 13 Cheese, Pasteurized..."
+        # Extract product name from block text BEFORE "Date Published"
+        date_pos = block_text.lower().find("date published:")
+        if date_pos != -1:
+            product_name_part = block_text[:date_pos].strip()
+            # Remove the product code part from the start
+            # Code is usually "XX X - - XX" or similar
+            # Use a slightly more robust split
+            first_line = product_name_part.split('\n')[0]
+            # Product code is roughly everything until the first word character that isn't part of the code
+            # But simpler: use split on '--' or '-' after the code part
+            code_parts = first_line.split('--', 1)
+            if len(code_parts) < 2:
+                code_parts = first_line.split('-', 1)
+            
+            p_code = code_parts[0].strip()
+            clean_product_name = re.sub(r'\s+', ' ', product_name_part)
+        else:
+            p_code = product_line.split(' ')[0] # Fallback
+            clean_product_name = product_line
+
+        # Hazard Extraction
+        extracted_info = {
+            "hazard_item": "", 
+            "class_m": None, "class_l": None,
+            "extraction_source": "None"
+        }
+        
+        # 1. Manual Overrides
+        manual_hazard = overrides.get('Manual_Hazard_Item')
+        manual_class_m = overrides.get('Manual_Class_M')
+        manual_class_l = overrides.get('Manual_Class_L')
+        
+        if manual_hazard and pd.notna(manual_hazard):
+            extracted_info["hazard_item"] = manual_hazard
+            extracted_info["class_m"] = manual_class_m if pd.notna(manual_class_m) else None
+            extracted_info["class_l"] = manual_class_l if pd.notna(manual_class_l) else None
+            extracted_info["extraction_source"] = "Manual_Override"
+        
+        # 2. Keyword Map
+        if not extracted_info["hazard_item"]:
+            keyword_result = self.keyword_mapper.map_hazard(block_text, source='FDA')
+            if keyword_result:
+                extracted_info["hazard_item"] = keyword_result['hazard_item']
+                extracted_info["class_m"] = keyword_result['class_m']
+                extracted_info["class_l"] = keyword_result['class_l']
+                extracted_info["extraction_source"] = "Keyword_Map"
+                
+        # 3. Fuzzy Matching
+        if not extracted_info["hazard_item"]:
+            extracted_item = self.fuzzy_matcher.extract_hazard_item_from_text(block_text, self.hazard_ref)
+            if extracted_item:
+                extracted_info["hazard_item"] = extracted_item
+                extracted_info["extraction_source"] = "Fuzzy_Fef"
+
+        # Classification Lookup
+        hazard_item_value = extracted_info["hazard_item"]
+        if extracted_info["class_m"] and extracted_info["class_l"]:
+            hazard_info = {
+                "category": extracted_info["class_m"],
+                "top_category": extracted_info["class_l"],
+                "analyzable": True,
+                "interest": False
             }
+            # Augment with metadata from lookup
+            base_info = self.fuzzy_matcher.match_hazard_category(hazard_item_value, self.hazard_ref)
+            hazard_info["analyzable"] = base_info.get("analyzable", True)
+            hazard_info["interest"] = base_info.get("interest", False)
+        else:
+            hazard_info = self.fuzzy_matcher.match_hazard_category(hazard_item_value, self.hazard_ref)
+        
+        # Product Type Override
+        manual_product = overrides.get('Manual_Product_Type')
+        final_product_type = p_code
+        if manual_product and pd.notna(manual_product):
+            final_product_type = manual_product
             
-            # 1. Manual Overrides (Explicit User Setting in Parquet)
-            manual_hazard = overrides.get('Manual_Hazard_Item')
-            manual_class_m = overrides.get('Manual_Class_M')
-            manual_class_l = overrides.get('Manual_Class_L')
-            
-            if manual_hazard and pd.notna(manual_hazard):
-                extracted_info["hazard_item"] = manual_hazard
-                extracted_info["class_m"] = manual_class_m if pd.notna(manual_class_m) else None
-                extracted_info["class_l"] = manual_class_l if pd.notna(manual_class_l) else None
-                extracted_info["extraction_source"] = "Manual_Override"
-            
-            # 2. Keyword Map (Hard Mapping via Reference)
-            if not extracted_info["hazard_item"]:
-                keyword_result = self.keyword_mapper.map_hazard(block_text, source='FDA')
-                if keyword_result:
-                    extracted_info["hazard_item"] = keyword_result['hazard_item']
-                    extracted_info["class_m"] = keyword_result['class_m']
-                    extracted_info["class_l"] = keyword_result['class_l']
-                    extracted_info["extraction_source"] = "Keyword_Map"
-                    
-            # 3. Fuzzy Matching (Fallback)
-            if not extracted_info["hazard_item"]:
-                extracted_item = self.fuzzy_matcher.extract_hazard_item_from_text(block_text, self.hazard_ref)
-                if extracted_item:
-                    extracted_info["hazard_item"] = extracted_item
-                    extracted_info["extraction_source"] = "Fuzzy_Fef"
-
-            # --- Classification Logic ---
-            # If we have classes (M/L) from override/keyword, use them.
-            # Otherwise, lookup using the hazard item.
-            hazard_item_value = extracted_info["hazard_item"]
-            
-            if extracted_info["class_m"] and extracted_info["class_l"]:
-                # Fully classified by override/keyword
-                hazard_info = {
-                    "category": extracted_info["class_m"],
-                    "top_category": extracted_info["class_l"],
-                    "analyzable": True, # Assume true for manual? Or default?
-                    "interest": False
-                }
-                # Double check if we can get analyzable/interest from lookup anyway if missing?
-                # Better to lookup to augment "analyzable/interest" but Keep the M/L classes fixed.
-                base_info = self.fuzzy_matcher.match_hazard_category(hazard_item_value, self.hazard_ref)
-                hazard_info["analyzable"] = base_info.get("analyzable", True)
-                hazard_info["interest"] = base_info.get("interest", False)
-                
-            else:
-                # Need to lookup classification
-                hazard_info = self.fuzzy_matcher.match_hazard_category(hazard_item_value, self.hazard_ref)
-            
-            # --- Product Type ---
-            manual_product = overrides.get('Manual_Product_Type')
-            final_product_type = p_code
-            if manual_product and pd.notna(manual_product):
-                final_product_type = manual_product
-                
-            records.append({
-                "registration_date": datetime.strptime(published_date, "%m/%d/%Y").strftime("%Y-%m-%d"),
-                "data_source": "FDA",
-                "source_detail": f"FDA Import Alert_{alert_num}",
-                "product_type": final_product_type,
-                "top_level_product_type": None,
-                "upper_product_type": None,
-                "product_name": clean_product_name, 
-                "origin_country": country,
-                "notifying_country": "United States",
-                "hazard_class_l": hazard_info["top_category"], 
-                "hazard_class_m": hazard_info["category"],
-                "hazard_item": hazard_item_value, 
-                "full_text": block_text, 
-                "analyzable": hazard_info.get("analyzable", True), # Default to True
-                "interest_item": hazard_info.get("interest", False) 
-            })
+        records.append({
+            "registration_date": datetime.strptime(published_date, "%m/%d/%Y").strftime("%Y-%m-%d"),
+            "data_source": "FDA",
+            "source_detail": f"FDA Import Alert_{alert_num}",
+            "product_type": final_product_type,
+            "top_level_product_type": None,
+            "upper_product_type": None,
+            "product_name": clean_product_name, 
+            "origin_country": country,
+            "notifying_country": "United States",
+            "hazard_class_l": hazard_info["top_category"], 
+            "hazard_class_m": hazard_info["category"],
+            "hazard_item": hazard_item_value, 
+            "full_text": block_text, 
+            "analyzable": hazard_info.get("analyzable", True),
+            "interest_item": hazard_info.get("interest", False) 
+        })
 
     def _normalize_country_name(self, raw_country: str) -> str:
         """
@@ -516,11 +542,14 @@ class FDACollector:
         # Return as-is if no match found
         return raw_country
 
-    def collect(self) -> pd.DataFrame:
+    def collect(self, force_update: bool = True) -> pd.DataFrame:
         """
         Main collection workflow.
+        
+        Args:
+            force_update: If True, ignore 'is_updated' flag and collect all target alerts.
         """
-        print("🚀 [FDA] Starting Import Alert collection (User-Defined Logic)...")
+        print(f"🚀 [FDA] Starting Import Alert collection (User-Defined Logic) [Force={force_update}]...")
         
         # Step 1: Load from Indexer Parquet
         alerts = self.fetch_index_page()
@@ -537,8 +566,8 @@ class FDACollector:
         skipped_unchanged = 0
         
         for alert_info in alerts:
-            # 1. Skip if Unchanged (Differential Crawling)
-            if not alert_info.get('is_updated', True):
+            # 1. Skip if Unchanged (Differential Crawling) - UNLESS Forced
+            if not force_update and not alert_info.get('is_updated', True):
                 skipped_unchanged += 1
                 continue
             
@@ -553,14 +582,8 @@ class FDACollector:
             # (User: "yellow나 red인지 확인하고 (green이면 이후동작 스킵)")
             has_red = alert_info.get('has_red', False)
             has_yellow = alert_info.get('has_yellow', False)
-            has_green = alert_info.get('has_green', False)
             
-            # Interpretation: We need Red or Yellow to proceed. 
-            # If ONLY Green (or neither Red/Yellow/Green??), we skip?
-            # Let's interpret strict: If NOT (Red or Yellow) -> Skip.
-            # This covers "Green Only" and "No List info".
             if not (has_red or has_yellow):
-                # print(f"   Skipping Alert {alert_info['alert_number']} (No Red/Yellow List)")
                 skipped_green += 1
                 continue
             
@@ -568,16 +591,19 @@ class FDACollector:
             if self.alert_limit and processed_count >= self.alert_limit:
                 break
 
-            records = self.parse_detail_page(alert_info)
+            records = self.parse_detail_page(alert_info, force_update=force_update)
             if records:
+                print(f"      ✅ Extracted {len(records)} records from Alert {alert_info['alert_number']}")
                 all_records.extend(records)
+            else:
+                print(f"      ⚠️ No records found in Alert {alert_info['alert_number']}")
             
             processed_count += 1
             if processed_count % 10 == 0:
-                print(f"   Progress: {processed_count} updated alerts processed...")
+                print(f"   Progress: {processed_count} alerts processed...")
         
-        print(f"ℹ️  Skipped {skipped_unchanged} alerts (No change detected).")
-        print(f"ℹ️  Skipped {skipped_unchanged} alerts (Green List only / No Red-Yellow).")
+        print(f"ℹ️  Skipped {skipped_unchanged} alerts (No change detected / Not forced).")
+        print(f"ℹ️  Skipped {skipped_green} alerts (Green List only / No Red-Yellow).")
         
         if not all_records:
             print("⚠️ No new records found matching the update criteria.")

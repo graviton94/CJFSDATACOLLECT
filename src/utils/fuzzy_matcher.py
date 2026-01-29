@@ -372,7 +372,8 @@ class FuzzyMatcher:
         
         return info
     
-    def extract_hazard_item_from_text(self, full_text: str, hazard_ref_df: pd.DataFrame) -> Optional[str]:
+    def extract_hazard_item_from_text(self, full_text: str, hazard_ref_df: pd.DataFrame, 
+                                     enable_fuzzy: bool = True) -> Optional[str]:
         """
         Extract the best matching hazard name from long text.
         
@@ -382,23 +383,16 @@ class FuzzyMatcher:
         
         Strategy:
         1. Normalize the input text (lowercase, strip whitespace)
-        2. Scan through all hazard reference data
-        3. Find the longest matching keyword (more specific is better)
-        4. Return the standardized hazard name (KOR_NM or ENG_NM)
+        2. Scan through all hazard reference data (Exact Scan)
+        3. [Optional] If not found, try Fuzzy Match (Partial Ratio) to catch typos
         
         Args:
             full_text: Long text containing hazard information
             hazard_ref_df: Reference DataFrame with hazard master data
+            enable_fuzzy: Whether to attempt fuzzy matching if exact scan fails
             
         Returns:
             Standardized hazard name (KOR_NM or ENG_NM) if found, None otherwise
-            
-        Example:
-            >>> matcher = FuzzyMatcher()
-            >>> text = "이물(곤충)이 혼입된 제품으로 확인되어 회수 조치합니다"
-            >>> result = matcher.extract_hazard_item_from_text(text, hazard_df)
-            >>> print(result)
-            '이물'
         """
         if not full_text or hazard_ref_df.empty:
             return None
@@ -411,9 +405,16 @@ class FuzzyMatcher:
         # Columns to search in (more options for hazards)
         match_columns = ['KOR_NM', 'ENG_NM', 'ABRV', 'NCKNM', 'TESTITM_NM']
         
-        # Use sentence scanning to find the best match
+        # 1. Exact / Sentence Scan
         matched_row = self._sentence_scan_match(search_term, hazard_ref_df, match_columns)
         
+        # 2. Fuzzy Fallback (User Requested "Fuzzy On")
+        if matched_row is None and enable_fuzzy:
+            # For long text, standard WRatio might be too loose or too strict depending on length ratio.
+            # But process.extractOne with WRatio is our standard "best effort".
+            # We use a slightly higher threshold to avoid noise in long text.
+            matched_row = self._fuzzy_match(search_term, hazard_ref_df, match_columns)
+
         if matched_row is not None:
             # Prefer Korean name, fall back to English name
             if "KOR_NM" in matched_row.index and pd.notna(matched_row.get("KOR_NM")):

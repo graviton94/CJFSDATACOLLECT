@@ -65,9 +65,15 @@ def apply_csv_updates():
                         else:
                             bool_val = bool(new_val)
                             
+                        # DEBUG: Specific check for 98-01
+                        if alert == '98-01':
+                            print(f"[DEBUG 98-01] Old: {df_parquet.at[idx, col]} ({type(df_parquet.at[idx, col])}) -> CSV Raw: {new_val} -> New Bool: {bool_val}")
+
                         if df_parquet.at[idx, col] != bool_val:
                             df_parquet.at[idx, col] = bool_val
                             changes_made = True
+                            if alert == '98-01':
+                                print(f"[DEBUG 98-01] CHANGED to {bool_val}")
                     else:
                         # Handle Strings (Treat 'nan', empty as None)
                         if pd.isna(new_val) or str(new_val).lower() in ['nan', 'none', '']:
@@ -87,6 +93,11 @@ def apply_csv_updates():
     # Save Back
     df_parquet.to_parquet(parquet_path, engine='pyarrow', compression='snappy')
     print("Saved updated parquet file.")
+
+    # Also save as CSV to keep them in sync
+    csv_master_path = Path("data/reference/fda_list_master.csv")
+    df_parquet.to_csv(csv_master_path, index=False, encoding='utf-8-sig')
+    print(f"Saved updated CSV file to {csv_master_path}")
     
     # Verify a few
     print("Sample updated records:")

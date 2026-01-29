@@ -285,6 +285,14 @@ def main():
                         df_new.at[index, 'Last_Updated_Date'] = old_record.get('Publish_Date')
 
                 if should_update:
+                    # OPTIMIZATION: If IsCollect is False, do NOT scrape details.
+                    # We accept the new metadata (Date/Title) from Web List (df_new), 
+                    # but skip the expensive detail page parsing.
+                    if not df_new.at[index, 'IsCollect']:
+                        # Skip detail parsing, but ensure metadata is saved (it is already in df_new)
+                        logger.info(f"Skipping update scrape for blocked alert: {alert_no}")
+                        continue
+                        
                     # Mark as updated for downstream collector
                     df_new.at[index, 'Is_New_Or_Updated'] = True
                     # Add metadata dict to processing list

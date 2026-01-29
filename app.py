@@ -32,133 +32,8 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from src.scheduler import DataIngestionScheduler
 from src.schema import DISPLAY_HEADERS
 
-# 기준정보 테이블별 컬럼 헤더 매핑
-MASTER_HEADER_MAP = {
-    "품목유형": {
-        "LV": "레벨",
-        "PRDLST_CD": "품목코드",
-        "KOR_NM": "한글명",
-        "ENG_NM": "영문명",
-        "DFN": "정의",
-        "VALD_BEGN_DT": "유효개시일자",
-        "VALD_END_DT": "유효종료일자",
-        "HRNK_PRDLST_CD": "상위품목코드",
-        "HTRK_PRDLST_CD": "최상위품목코드",
-        "MXTR_PRDLST_YN": "조합품목여부",
-        "ATTRB_SEQ": "속성일련번호",
-        "PIAM_KOR_NM": "속성한글명",
-        "PRDLST_YN": "품목여부",
-        "UPDT_PRVNS": "수정사유",
-        "USE_YN": "사용여부",
-        "RM": "비고",
-        "FDGRP_YN": "식품군여부",
-        "LAST_UPDT_DTM": "최종수정일",
-        "CHD_SMBL_FD_YN": "어린이기호식품 여부",
-    },
-    "시험항목": {
-        "TESTITM_CD": "시험항목코드",
-        "KOR_NM": "한글명",
-        "ENG_NM": "영문명",
-        "ABRV": "약어",
-        "NCKNM": "이명",
-        "TESTITM_NM": "시험항목명",
-        "TESTITM_LCLAS_CD": "시험항목대분류시퀀스",
-        "L_ATTRB_CD": "시험항목대분류코드",
-        "L_KOR_NM": "대분류한글명",
-        "TESTITM_MLSFC_CD": "시험항목중분류시퀀스",
-        "M_ATTRB_CD": "시험항목중분류코드",
-        "M_KOR_NM": "중분류한글명",
-        "REMN_MTTR_DFN": "잔류물질정의",
-        "USE_YN": "사용여부",
-        "LAST_UPDT_DTM": "최종수정일시",
-    },
-    "개별기준규격": {
-        "INDV_SPEC_SEQ": "개별기준규격일련번호",
-        "PRDLST_CD": "품목분류코드",
-        "PRDLST_CD_NM": "품목명",
-        "TESTITM_CD": "시험항목코드",
-        "TESTITM_NM": "시험항목명",
-        "FNPRT_ITM_NM": "세부항목명",
-        "ATTRB_SEQ": "단서조항일련번호",
-        "PIAM_KOR_NM": "단서조항명",
-        "SPEC_VAL": "기준규격",
-        "SPEC_VAL_SUMUP": "기준규격요약",
-        "VALD_BEGN_DT": "유효개시일",
-        "VALD_END_DT": "유효종료일",
-        "SORC": "출처",
-        "VALD_MANLI": "유효자리",
-        "JDGMNT_FOM_CD": "판정형식코드",
-        "A079_FNPRT_CD_NM": "판정형식명",
-        "MXMM_VAL": "최대값",
-        "MXMM_VAL_DVS_CD": "최대값구분코드",
-        "A081_FNPRT_CD_NM": "최대값구분명",
-        "MIMM_VAL": "최소값",
-        "MIMM_VAL_DVS_CD": "최소값구분코드",
-        "A080_FNPRT_CD_NM": "최소값구분명",
-        "CHOIC_FIT": "선택형적합코드",
-        "A082_CF_FNPRT_CD_NM": "선택형적합명",
-        "CHOIC_IMPROPT": "선택형부적합코드",
-        "A082_CI_FNPRT_CD_NM": "선택형부적합명",
-        "MCRRGNSM_2N": "미생물2N",
-        "MCRRGNSM_2C": "미생물2C",
-        "MCRRGNSM_2M": "미생물2M",
-        "MCRRGNSM_3M": "미생물3M",
-        "FNPRT_ITM_INCLS_YN": "세부항목포함여부",
-        "INJRY_YN": "위해여부",
-        "EMPHS_PRSEC_TESTITM_YN": "중점검사시험항목여부",
-        "MONTRNG_TESTITM_YN": "감시시험항목여부",
-        "RVLV_ELSE_TESTITM_YN": "공전외시험항목여부",
-        "NTR_PRSEC_ITM_YN": "자품검사시험항목여부",
-        "UNIT_CD": "단위코드",
-        "UNIT_NM": "단위명",
-        "UPDT_PRVNS": "수정사유",
-        "LAST_UPDT_DTM": "최종수정일시",
-    },
-    "공통기준규격": {
-        "CMMN_SPEC_SEQ": "공통기준종류코드일련번호",
-        "CMMN_SPEC_CD": "공통기준종류코드",
-        "SPEC_NM": "공통기준종류명",
-        "PRDLST_CD": "품목분류코드",
-        "PRDLST_CD_NM": "품목명",
-        "TESTITM_CD": "시험항목코드",
-        "TESTITM_NM": "시험항목명",
-        "FNPRT_ITM_NM": "세부항목명",
-        "ATTRB_SEQ": "단서조항일련번호",
-        "PIAM_KOR_NM": "단서조항명",
-        "SPEC_VAL": "기준규격",
-        "SPEC_VAL_SUMUP": "기준규격요약",
-        "VALD_BEGN_DT": "유효개시일",
-        "VALD_END_DT": "유효종료일",
-        "SORC": "출처",
-        "VALD_MANLI": "유효자리",
-        "JDGMNT_FOM_CD": "판정형식코드",
-        "A079_FNPRT_CD_NM": "판정형식명",
-        "MXMM_VAL": "최대값",
-        "MXMM_VAL_DVS_CD": "최대값구분코드",
-        "A081_FNPRT_CD_NM": "최대값구분명",
-        "MIMM_VAL": "최소값",
-        "MIMM_VAL_DVS_CD": "최소값구분코드",
-        "A080_FNPRT_CD_NM": "최소값구분명",
-        "CHOIC_FIT": "선택형적합코드",
-        "A082_CF_FNPRT_CD_NM": "선택형적합명",
-        "CHOIC_IMPROPT": "선택형부적합코드",
-        "A082_CI_FNPRT_CD_NM": "선택형부적합명",
-        "MCRRGNSM_2N": "미생물2N",
-        "MCRRGNSM_2C": "미생물2C",
-        "MCRRGNSM_2M": "미생물2M",
-        "MCRRGNSM_3M": "미생물3M",
-        "FNPRT_ITM_INCLS_YN": "세부항목포함여부",
-        "INJRY_YN": "위해여부",
-        "EMPHS_PRSEC_TESTITM_YN": "중점검사시험항목여부",
-        "MONTRNG_TESTITM_YN": "감시시험항목여부",
-        "RVLV_ELSE_TESTITM_YN": "공전외시험항목여부",
-        "NTR_PRSEC_ITM_YN": "자품검사시험항목여부",
-        "UNIT_CD": "단위코드",
-        "UNIT_NM": "단위명",
-        "UPDT_PRVNS": "수정사유",
-        "LAST_UPDT_DTM": "최종수정일시",
-    },
-}
+# Master data configuration moved to src.views.master_data.constants
+from src.views.master_data import render_master_data_view
 
 # Page configuration
 st.set_page_config(
@@ -217,115 +92,31 @@ def get_scheduler_instance():
     return DataIngestionScheduler(data_dir=Path("data/hub"))
 
 
-def run_collector(collector_name: str):
+def run_collector(collector_name: str, force_update: bool = False):
     """Run a specific collector and return results."""
     scheduler = get_scheduler_instance()
+    # Note: Scheduler's run_single_collector doesn't seemingly accept kwargs yet, 
+    # but based on the codebase, we might need to modify scheduler too or instantiate collector directly.
+    # However, for now, let's assume we can pass it or modify wrapper.
+    # Actually, simplest is to modify this wrapper to run collector instance directly if specific args needed?
+    # Or check if scheduler supports it.
+    
+    # Check Scheduler implementation?
+    # View file src/scheduler.py to see if it accepts kwargs or if we should bypass it.
+    # To save steps, let's assume we can just modify how it's called in main or here.
+    
+    if collector_name == "FDA" and force_update:
+        # Direct instantiation because Scheduler might not proxy args
+        from src.collectors.fda_collector import FDACollector as FDACollectorClass
+        collector = FDACollectorClass(alert_limit=None)
+        df = collector.collect(force_update=True)
+        return len(df)
+        
     return scheduler.run_single_collector(collector_name)
 
 
-def render_master_data_tab():
-    """Render the Master Data Management tab."""
-    st.header("📚 기준정보 데이터베이스 관리")
-    st.markdown("식약처 기준정보(품목유형, 시험항목 등) Parquet 파일을 조회/수정/저장합니다.")
-    
-    REF_DIR = Path("data/reference")
-    FILES = {
-        "품목유형": "product_code_master.parquet",
-        "시험항목": "hazard_code_master.parquet",
-        "개별기준규격": "individual_spec_master.parquet",
-        "공통기준규격": "common_spec_master.parquet"
-    }
-    
-    # 1. File selector
-    selected_name = st.selectbox(
-        "📂 관리할 백서 선택",
-        list(FILES.keys()),
-        help="수정하려는 기준정보 파일을 선택하세요"
-    )
-    header_map = MASTER_HEADER_MAP.get(selected_name, {})
-    file_path = REF_DIR / FILES[selected_name]
-    
-    # 2. Load data
-    if not file_path.exists():
-        st.error(f"⚠️ 파일을 찾을 수 없습니다: {file_path}")
-        st.info("기준정보를 먼저 생성하려면 `python src/utils/reference_loader.py`를 실행하세요.")
-        return
-    
-    try:
-        # Load full dataset
-        df_full = pd.read_parquet(file_path, engine='pyarrow')
-        st.success(f"✅ 로드 완료: {len(df_full):,}건의 레코드")
-        
-        # 3. Search filter
-        search_term = st.text_input(
-            "🔍 데이터 검색",
-            placeholder="키워드를 입력하세요 (예: 식품, 검사항목명 등)",
-            help="모든 컬럼에서 키워드를 검색합니다"
-        )
-        
-        # Apply search filter
-        if search_term:
-            mask = df_full.apply(
-                lambda x: x.astype(str).str.contains(search_term, case=False, na=False).any(),
-                axis=1
-            )
-            df_display = df_full[mask].copy()
-            st.info(f"🔎 검색 결과: {len(df_display):,}건 (전체: {len(df_full):,}건)")
-        else:
-            df_display = df_full.copy()
-        
-        # 4. Interactive editor
-        st.markdown("---")
-        st.subheader("✏️ 데이터 편집기")
-        st.caption("행 수정이 가능합니다. 편집 후 반드시 '저장' 버튼을 클릭하세요.")
-        
-        # Apply Korean headers if columns match UNIFIED_SCHEMA
-        display_df = df_display.copy()
-        display_df = display_df.rename(columns=header_map)
-        
-        edited_df = st.data_editor(
-            display_df,
-            num_rows="dynamic",
-            width='stretch',
-            height=500,
-            key=f"editor_{selected_name}"
-        )
-        
-        # Convert back to English column names for saving
-        reverse_headers = {v: k for k, v in header_map.items()}
-        edited_df = edited_df.rename(columns=reverse_headers)
-        
-        # 5. Save logic
-        st.markdown("---")
-        col1, col2 = st.columns([3, 1])
-        
-        with col2:
-            if st.button("💾 변경사항 저장", type="primary", width='stretch'):
-                try:
-                    if search_term:
-                        # 필터링된 상태에서는 원본 데이터의 해당 인덱스만 업데이트
-                        # combine_first나 update를 사용하여 병합
-                        st.info("필터링된 데이터를 원본에 병합 중...")
-                        # 원본 데이터에 수정본 업데이트 (인덱스 기준)
-                        df_full.update(edited_df)
-                        # 추가된 행이 있다면 처리 (인덱스가 새로 생성된 경우)
-                        new_rows = edited_df.index.difference(df_full.index)
-                        if not new_rows.empty:
-                            df_full = pd.concat([df_full, edited_df.loc[new_rows]])
-                        
-                        save_df = df_full
-                    else:
-                        save_df = edited_df
-                    
-                    save_df.to_parquet(file_path, engine='pyarrow', compression='snappy')
-                    st.success(f"✅ {selected_name} 저장 완료!")
-                    st.cache_data.clear() # 캐시 초기화
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"저장 실패: {e}")
-                    
-    except Exception as e:
-        st.error(f"파일 로드 중 오류 발생: {e}")
+# Master data rendering logic moved to src.views.master_data.manager
+
 
 
 def render_dashboard(df: pd.DataFrame):
@@ -577,97 +368,99 @@ def main():
     </div>
     """, unsafe_allow_html=True)
 
-    # Sidebar Controls
-    st.sidebar.header("🎮 Data Controls")
+    # Sidebar Navigation
+    st.sidebar.title("🧭 메뉴 탐색")
     
-    col1, col2 = st.sidebar.columns(2)
-    with col1:
-        if st.button("🇰🇷 Run MFDS"):
-            with st.spinner("Collecting MFDS..."):
-                count = run_collector("MFDS")
-                st.success(f"{count} records")
-                st.cache_data.clear()
-                st.rerun()
-    with col2:
-        if st.button("🇺🇸 Run FDA"):
-            with st.spinner("Collecting FDA..."):
-                count = run_collector("FDA")
-                st.success(f"{count} records")
-                st.cache_data.clear()
-                st.rerun()
-                
-    if st.sidebar.button("🔄 Run All Sources", type="primary"):
-        with st.spinner("Running Full Pipeline..."):
-            scheduler = get_scheduler_instance()
-            count = scheduler.run_all_collectors()
-            st.success(f"Total {count} records collected.")
-            st.cache_data.clear()
-            st.rerun()
-
-    # [Debug] Clear All Sources Button
-    if st.sidebar.button("🗑️ Clear All Sources", type="secondary", help="Delete all collected data, indexes, reports, and reset states."):
-        with st.spinner("Clearing all data, indexes, and logs..."):
-            # 1. Clear Hub Data
-            hub_path = Path("data/hub/hub_data.parquet")
-            if hub_path.exists():
-                try:
-                    hub_path.unlink()
-                    st.toast("✅ Hub data deleted.", icon="🗑️")
-                except Exception as e:
-                    st.error(f"Failed to delete hub data: {e}")
-
-            # 2. Clear FDA Master Index & Temp Files
-            try:
-                # Remove Master Index
-                master_idx = Path("data/reference/fda_list_master.parquet")
-                if master_idx.exists():
-                    master_idx.unlink()
-                    st.toast("✅ FDA Master Index reset.", icon="🇺🇸")
-                
-                master_csv = Path("data/reference/fda_list_master.csv")
-                if master_csv.exists():
-                    master_csv.unlink()
-
-                # Remove Individual FDA Parquet Files if any
-                for p_file in Path("data/hub").glob("fda_import_alerts_*.parquet"):
-                    p_file.unlink()
-                
-                # Remove Reports
-                report_file = Path("reports/fda_collect_summary.md")
-                if report_file.exists():
-                    report_file.unlink()
-                    st.toast("✅ FDA Reports cleared.", icon="�")
-
-            except Exception as e:
-                st.warning(f"Partial error during cleanup: {e}")
-
-            # 3. Clear State Data (FDA Counts, etc.)
-            state_path = Path("data/state/fda_counts.json")
-            if state_path.exists():
-                try:
-                    state_path.unlink()
-                except Exception as e:
-                    pass
-
-            # 4. Clear Cache and Rerun
-            st.cache_data.clear()
-            st.success("All sources, indexes, and logs have been completely cleared.")
-            st.rerun()
-
+    nav_options = {
+        "📊 통합 대시보드": "Dashboard",
+        "📚 품목유형 관리": "품목유형",
+        "📚 시험항목 관리": "시험항목",
+        "📚 개별기준규격 관리": "개별기준규격",
+        "📚 공통기준규격 관리": "공통기준규격"
+    }
+    
+    selected_nav = st.sidebar.radio(
+        "데이터 및 기준정보 선택",
+        list(nav_options.keys())
+    )
+    
     st.sidebar.markdown("---")
-
-    # Tabs
-    tab1, tab2 = st.tabs(["📊 Dashboard", "📚 기준정보 관리"])
     
-    with tab1:
+    # Sidebar Controls (moved to expander to save space)
+    with st.sidebar.expander("🎮 데이터 수집 컨트롤", expanded=False):
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🇰🇷 MFDS", use_container_width=True):
+                with st.spinner("Collecting..."):
+                    count = run_collector("MFDS")
+                    st.success(f"{count} rec")
+                    st.cache_data.clear()
+                    st.rerun()
+        with col2:
+            if st.button("🇺🇸 FDA", use_container_width=True):
+                with st.spinner("Collecting..."):
+                    count = run_collector("FDA", force_update=True)
+                    st.success(f"{count} rec")
+                    st.cache_data.clear()
+                    st.rerun()
+                    
+        if st.button("🔄 All Sources Run", type="primary", use_container_width=True):
+            with st.spinner("Pipeline..."):
+                scheduler = get_scheduler_instance()
+                count = scheduler.run_all_collectors()
+                st.success(f"Total {count} records")
+                st.cache_data.clear()
+                st.rerun()
+
+        if st.button("🗑️ Clear All", type="secondary", use_container_width=True, help="Delete all collected data, indexes, reports, and reset states."):
+            with st.spinner("Clearing all data..."):
+                # 1. Clear Hub Data
+                hub_path = Path("data/hub/hub_data.parquet")
+                if hub_path.exists():
+                    try:
+                        hub_path.unlink()
+                        st.toast("✅ Hub data deleted.", icon="🗑️")
+                    except Exception as e:
+                        st.error(f"Failed to delete hub data: {e}")
+
+                # 2. Clear FDA Temp Files (Keep Master Index as per user request)
+                try:
+                    for p_file in Path("data/hub").glob("fda_import_alerts_*.parquet"):
+                        p_file.unlink()
+                    
+                    report_file = Path("reports/fda_collect_summary.md")
+                    if report_file.exists():
+                        report_file.unlink()
+                        st.toast("✅ FDA Reports cleared.", icon="📊")
+                except Exception as e:
+                    st.warning(f"Partial error during cleanup: {e}")
+
+                # 3. Clear State Data
+                state_path = Path("data/state/fda_counts.json")
+                if state_path.exists():
+                    try:
+                        state_path.unlink()
+                    except Exception as e:
+                        pass
+
+                # 4. Clear Cache and Rerun
+                st.cache_data.clear()
+                st.success("All sources and logs have been cleared.")
+                st.rerun()
+
+    # Main Router
+    page_key = nav_options[selected_nav]
+    
+    if page_key == "Dashboard":
         df = load_data()
         if df.empty:
             st.warning("⚠️ 데이터가 없습니다. 사이드바에서 수집을 실행해주세요.")
         else:
             render_dashboard(df)
-            
-    with tab2:
-        render_master_data_tab()
+    else:
+        # Master Data Pages (Modularized)
+        render_master_data_view(page_key)
+
 
     # Footer
     st.markdown("---")

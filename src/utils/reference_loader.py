@@ -109,21 +109,72 @@ class ReferenceLoader:
         return df
 
     def run(self):
-        """전체 타겟 실행"""
+        """전체 타겟 실행 (수동고정 데이터 보존 로직 포함)"""
+        # Primary Key Mapping based on constants
+        pk_map = {
+            "I2510": "PRDLST_CD",
+            "I2530": "TESTITM_CD",
+            "I2580": "INDV_SPEC_SEQ",
+            "I2600": "CMMN_SPEC_SEQ"
+        }
+
         for service_id, config in self.targets.items():
             try:
-                df = self.fetch_data(service_id, config)
-                
-                if not df.empty:
-                    file_path = self.OUTPUT_DIR / f"{config['name']}.parquet"
-                    df.to_parquet(file_path, engine='pyarrow', compression='snappy', index=False)
-                    print(f"💾 저장 완료: {file_path} (Total {len(df)} rows)\n")
-                else:
+                new_df = self.fetch_data(service_id, config)
+                if new_df.empty:
                     print(f"⚠️ {config['desc']} 수집 실패: 데이터 없음\n")
+                    continue
+                
+                file_path = self.OUTPUT_DIR / f"{config['name']}.parquet"
+                pk = pk_map.get(service_id)
+
+                if file_path.exists() and pk:
+                    try:
+                        old_df = pd.read_parquet(file_path)
+                        
+                        if 'IS_MANUAL_FIXED' in old_df.columns:
+                            # 1. 수동 고정된 데이터 추출
+                            manual_df = old_df[old_df['IS_MANUAL_FIXED'] == True].copy()
+                            
+                            if not manual_df.empty:
+                                print(f"   💡 {len(manual_df)}건의 수동 고정 데이터를 발견했습니다. 보존 처리합니다.")
+                                
+                                # 2. 새로운 데이터에서 수동 고정된 PK를 제외
+                                if pk in new_df.columns:
+                                    manual_pks = manual_df[pk].unique()
+                                    new_df = new_df[~new_df[pk].isin(manual_pks)]
+                                
+                                # 3. 병합
+                                final_df = pd.concat([manual_df, new_df], ignore_index=True)
+                            else:
+                                final_df = new_df
+                        else:
+                            final_df = new_df
+                    except Exception as merge_err:
+                        print(f"   ⚠️ 병합 중 오류 발생, 신규 데이터로 대체합니다: {merge_err}")
+                        final_df = new_df
+                else:
+                    final_df = new_df
+
+                # Ensure IS_MANUAL_FIXED exists in final output
+                if 'IS_MANUAL_FIXED' not in final_df.columns:
+                    final_df['IS_MANUAL_FIXED'] = False
+
+                final_df.to_parquet(file_path, engine='pyarrow', compression='snappy', index=False)
+                print(f"💾 저장 완료: {file_path} (Total {len(final_df)} rows)\n")
+
             except Exception as e:
                 print(f"🚫 {config['desc']} 처리 중단: {e}\n")
         
-        # 국가명 마스터 데이터 처리
+        # 2. Enrich and Standardize Data
+        try:
+            from src.utils.reference_enricher import ReferenceEnricher
+            enricher = ReferenceEnricher()
+            enricher.enrich_all()
+        except Exception as e:
+            print(f"⚠️ Enrichment failed: {e}")
+
+        # 3. 국가명 마스터 데이터 처리
         self._process_country_master()
     
     def _process_country_master(self):
